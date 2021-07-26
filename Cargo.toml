@@ -1,0 +1,18 @@
+[package]
+name = "dhig"
+version = "0.1.0"
+edition = "2018"
+authors = ["Evan Cameron <cameron.evan@gmail.com"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dhcproto = { git = "ssh://git@gitlab.bluecatlabs.net/ecameron/dhcp", path = "libs/proto" }
+
+anyhow = "1.0"
+clap = "3.0.0-beta.2"
+tracing = "0.1"
+tracing-subscriber = "0.2"
+tracing-futures = "0.2"
+tokio = { version = "1.9", features = ["full"] }
+rand = "0.8"
