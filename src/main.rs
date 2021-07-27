@@ -8,15 +8,14 @@
 #![deny(broken_intra_doc_links)]
 #![allow(clippy::cognitive_complexity)]
 
-use std::{net::IpAddr, str::FromStr};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    str::FromStr,
+};
 
 use anyhow::{anyhow, Error, Result};
 use clap::Clap;
-use tokio::{
-    runtime::Builder,
-    signal,
-    sync::{broadcast, mpsc},
-};
+use crossbeam_channel::Receiver;
 use tracing::{error, info, trace};
 use tracing_subscriber::{
     fmt::{self, format::Pretty},
@@ -26,87 +25,47 @@ use tracing_subscriber::{
 };
 
 mod runner;
-mod shutdown;
-
 use runner::Runner;
 
 fn main() -> Result<()> {
     let mut args = Args::parse();
 
-    // set default port for family if none provided
+    // set default port if none provided
     if args.port.is_none() {
-        match args.family {
-            Family::INET6 => {
-                args.port = Some(546);
-            }
-            Family::INET => {
-                args.port = Some(67);
-            }
+        if args.ip.is_ipv6() {
+            args.port = Some(546);
+        } else {
+            args.port = Some(67);
+        }
+    }
+
+    if args.bind.is_none() {
+        if args.ip.is_ipv6() {
+            args.bind = Some(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
+        } else {
+            args.bind = Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
         }
     }
 
     init_tracing(&args);
-
     trace!("{:?}", args);
-    let rt = Builder::new_current_thread().enable_all().build()?;
-    trace!(?rt, "tokio runtime created");
-
-    // shutdown mechanism courtesy of https://github.com/tokio-rs/mini-redis
-    rt.block_on(async move {
-        // When the provided `shutdown` future completes, we must send a shutdown
-        // message to all active connections. We use a broadcast channel for this
-        // purpose. The call below ignores the receiver of the broadcast pair, and when
-        // a receiver is needed, the subscribe() method on the sender is used to create
-        // one.
-        let (notify_shutdown, _) = broadcast::channel(1);
-        let (shutdown_complete_tx, shutdown_complete_rx) = mpsc::channel(1);
-
-        let mut runner = Runner {
-            args,
-            notify_shutdown,
-            shutdown_complete_rx,
-            shutdown_complete_tx,
-        };
-        tokio::select! {
-            res = runner.run() => {
-                if let Err(err) = res {
-                    error!(?err, "nailgun exited with an error");
-                }
-            },
-            res = sig() => {
-                info!("caught signal handler-- exiting");
-                if let Err(err) = res {
-                    error!(?err);
-                }
-            },
-        }
-        let Runner {
-            mut shutdown_complete_rx,
-            shutdown_complete_tx,
-            notify_shutdown,
-            ..
-        } = runner;
-        trace!("sending shutdown signal");
-        // When `notify_shutdown` is dropped, all tasks which have `subscribe`d will
-        // receive the shutdown signal and can exit
-        drop(notify_shutdown);
-        // Drop final `Sender` so the `Receiver` below can complete
-        drop(shutdown_complete_tx);
-
-        // Wait for all active connections to finish processing. As the `Sender`
-        // handle held by the listener has been dropped above, the only remaining
-        // `Sender` instances are held by connection handler tasks. When those drop,
-        // the `mpsc` channel will close and `recv()` will return `None`.
-        let _ = shutdown_complete_rx.recv().await;
-
-        Ok::<(), anyhow::Error>(())
-    })?;
+    let shutdown_rx = ctrl_channel()?;
+    let mut runner = Runner { args, shutdown_rx };
+    if let Err(err) = runner.run() {
+        error!(%err, "encountered error");
+        return Err(err);
+    }
 
     Ok(())
 }
 
-async fn sig() -> Result<()> {
-    signal::ctrl_c().await.map_err(|err| anyhow!(err))
+fn ctrl_channel() -> Result<Receiver<()>> {
+    let (sender, receiver) = crossbeam_channel::bounded(10);
+    ctrlc::set_handler(move || {
+        let _ = sender.send(());
+    })?;
+
+    Ok(receiver)
 }
 
 fn init_tracing(args: &Args) {
@@ -155,14 +114,17 @@ fn init_tracing(args: &Args) {
 pub struct Args {
     /// IP address to send to
     pub ip: IpAddr,
+    /// address to bind to
+    #[clap(long, short = 'b')]
+    pub bind: Option<IpAddr>,
     /// which port use. Default is 67 for dhcpv4 and 546 for dhcpv6
     #[clap(long, short = 'p')]
     pub port: Option<u16>,
-    /// which internet family to use, (inet/inet6)
-    #[clap(long, short = 'F', default_value = "inet")]
-    pub family: Family,
-    /// query timeout in seconds. Default is 2.
-    #[clap(long, short = 't', default_value = "2")]
+    // /// which internet family to use, (inet/inet6)
+    // #[clap(long, short = 'F', default_value = "inet")]
+    // pub family: Family,
+    /// query timeout in seconds. Default is 3.
+    #[clap(long, short = 't', default_value = "3")]
     pub timeout: u64,
     /// select the log output format
     #[clap(long, default_value = "pretty")]
@@ -195,6 +157,18 @@ impl FromStr for LogStructure {
 pub enum Family {
     INET,
     INET6,
+}
+
+impl Family {
+    /// Returns `true` if the family is [`INET`].
+    pub fn is_ipv4(&self) -> bool {
+        matches!(self, Self::INET)
+    }
+
+    /// Returns `true` if the family is [`INET6`].
+    pub fn is_ipv6(&self) -> bool {
+        matches!(self, Self::INET6)
+    }
 }
 
 impl FromStr for Family {
