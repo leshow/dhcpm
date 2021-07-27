@@ -69,40 +69,30 @@ fn ctrl_channel() -> Result<Receiver<()>> {
 }
 
 fn init_tracing(args: &Args) {
+    let filter_layer = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
     match args.output {
         LogStructure::Pretty => {
-            let fmt_layer = fmt::layer()
-                .fmt_fields(Pretty::with_source_location(Pretty::default(), false))
-                .with_target(false);
-            let filter_layer = EnvFilter::try_from_default_env()
-                .or_else(|_| EnvFilter::try_new("info"))
-                .unwrap();
-
             tracing_subscriber::registry()
                 .with(filter_layer)
-                .with(fmt_layer)
+                .with(
+                    fmt::layer()
+                        .fmt_fields(Pretty::with_source_location(Pretty::default(), false))
+                        .with_target(false),
+                )
                 .init();
         }
         LogStructure::Debug => {
-            let fmt_layer = fmt::layer();
-            let filter_layer = EnvFilter::try_from_default_env()
-                .or_else(|_| EnvFilter::try_new("info"))
-                .unwrap();
-
             tracing_subscriber::registry()
                 .with(filter_layer)
-                .with(fmt_layer)
+                .with(fmt::layer())
                 .init();
         }
         LogStructure::Json => {
-            let fmt_layer = fmt::layer().json();
-            let filter_layer = EnvFilter::try_from_default_env()
-                .or_else(|_| EnvFilter::try_new("info"))
-                .unwrap();
-
             tracing_subscriber::registry()
                 .with(filter_layer)
-                .with(fmt_layer)
+                .with(fmt::layer().json())
                 .init();
         }
     }
@@ -120,9 +110,6 @@ pub struct Args {
     /// which port use. Default is 67 for dhcpv4 and 546 for dhcpv6
     #[clap(long, short = 'p')]
     pub port: Option<u16>,
-    // /// which internet family to use, (inet/inet6)
-    // #[clap(long, short = 'F', default_value = "inet")]
-    // pub family: Family,
     /// query timeout in seconds. Default is 3.
     #[clap(long, short = 't', default_value = "3")]
     pub timeout: u64,
@@ -147,38 +134,6 @@ impl FromStr for LogStructure {
             "debug" => Ok(LogStructure::Debug),
             _ => Err(anyhow!(
                 "unknown log structure type: {:?} must be \"json\" or \"compact\" or \"pretty\"",
-                s
-            )),
-        }
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub enum Family {
-    INET,
-    INET6,
-}
-
-impl Family {
-    /// Returns `true` if the family is [`INET`].
-    pub fn is_ipv4(&self) -> bool {
-        matches!(self, Self::INET)
-    }
-
-    /// Returns `true` if the family is [`INET6`].
-    pub fn is_ipv6(&self) -> bool {
-        matches!(self, Self::INET6)
-    }
-}
-
-impl FromStr for Family {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match &s.to_ascii_lowercase()[..] {
-            "inet" => Ok(Family::INET),
-            "inet6" => Ok(Family::INET6),
-            _ => Err(anyhow!(
-                "unknown family type: {:?} must be \"inet\" or \"inet6\"",
                 s
             )),
         }

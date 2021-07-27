@@ -16,7 +16,7 @@ use dhcproto::{
     v4, v6,
 };
 
-use crate::{Args, Family};
+use crate::Args;
 
 #[derive(Debug)]
 pub struct Runner {
