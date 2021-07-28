@@ -115,7 +115,7 @@ dependencies = [
 [[package]]
 name = "dhcproto"
 version = "0.1.0"
-source = "git+ssh://git@gitlab.bluecatlabs.net/ecameron/dhcp#1e37c0ae3afd9c23d29c8c6cedce32a1fd6aa3ff"
+source = "git+ssh://git@gitlab.bluecatlabs.net/ecameron/dhcp#753c5ae60236d8475af5748841fa43a95b8137e9"
 dependencies = [
  "rand",
  "thiserror",

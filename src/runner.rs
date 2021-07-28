@@ -32,10 +32,7 @@ impl Runner {
         let recv = Arc::clone(&send);
 
         let (tx, rx) = bounded(100);
-        // recv
-        self.recv(tx, recv);
-        // send
-        self.send(send);
+        self.send_recv(tx, send, recv);
 
         let timeout = tick(Duration::from_secs(self.args.timeout));
         loop {
@@ -64,22 +61,17 @@ impl Runner {
         Ok(())
     }
 
-    fn send(&self, send: Arc<UdpSocket>) {
+    fn send_recv(&self, tx: Sender<Msg>, send: Arc<UdpSocket>, recv: Arc<UdpSocket>) {
+        // start recv thread
+        self.recv(tx, recv);
+        // start sender
         let args = self.args.clone();
         thread::spawn(move || {
-            let target: SocketAddr = (args.ip, args.port.unwrap()).into();
-            let buf = if args.ip.is_ipv6() {
+            let target: SocketAddr = (args.target, args.port.unwrap()).into();
+            let buf = if args.target.is_ipv6() {
                 todo!()
             } else {
-                let msg = v4::Message::new(
-                    Ipv4Addr::UNSPECIFIED,
-                    // TODO: use different yiaddr
-                    "192.168.0.1".parse().unwrap(),
-                    "192.168.0.1".parse().unwrap(),
-                    Ipv4Addr::UNSPECIFIED,
-                    &args.chaddr.bytes(),
-                );
-                msg.to_vec()
+                v4_discover(&args).to_vec()
             }?;
             send.send_to(&buf[..], target)?;
             Ok::<_, anyhow::Error>(())
@@ -92,7 +84,7 @@ impl Runner {
             let mut buf = vec![0; 1024];
             let (len, addr) = recv.recv_from(&mut buf)?;
             trace!(buf = ?&buf[..len], "recv");
-            let msg = if args.ip.is_ipv6() {
+            let msg = if args.target.is_ipv6() {
                 Msg::V6(v6::Message::decode(&mut Decoder::new(&buf[..len]))?)
             } else {
                 Msg::V4(v4::Message::decode(&mut Decoder::new(&buf[..len]))?)
@@ -102,6 +94,35 @@ impl Runner {
             Ok::<_, anyhow::Error>(())
         });
     }
+}
+
+fn v4_discover(args: &Args) -> v4::Message {
+    let mut msg = v4::Message::new(
+        Ipv4Addr::UNSPECIFIED,
+        Ipv4Addr::UNSPECIFIED,
+        Ipv4Addr::UNSPECIFIED,
+        Ipv4Addr::UNSPECIFIED,
+        &args.chaddr.bytes(),
+    );
+    msg.opts_mut()
+        .insert(v4::DhcpOption::MessageType(v4::MessageType::Discover));
+    msg.opts_mut().insert(v4::DhcpOption::AddressLeaseTime(120));
+    msg
+}
+
+fn v4_request(args: &Args) -> v4::Message {
+    let mut msg = v4::Message::new(
+        Ipv4Addr::UNSPECIFIED,
+        Ipv4Addr::UNSPECIFIED,
+        Ipv4Addr::UNSPECIFIED,
+        Ipv4Addr::UNSPECIFIED,
+        &args.chaddr.bytes(),
+    );
+
+    msg.opts_mut()
+        .insert(v4::DhcpOption::MessageType(v4::MessageType::Discover));
+    msg.opts_mut().insert(v4::DhcpOption::AddressLeaseTime(120));
+    msg
 }
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]

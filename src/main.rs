@@ -33,7 +33,7 @@ fn main() -> Result<()> {
 
     // set default port if none provided
     if args.port.is_none() {
-        if args.ip.is_ipv6() {
+        if args.target.is_ipv6() {
             args.port = Some(546);
         } else {
             args.port = Some(67);
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
     }
 
     if args.bind.is_none() {
-        if args.ip.is_ipv6() {
+        if args.target.is_ipv6() {
             args.bind = Some(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
         } else {
             args.bind = Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
@@ -100,11 +100,19 @@ fn init_tracing(args: &Args) {
 }
 
 #[derive(Debug, FromArgs, Clone, PartialEq)]
-/// dhmsg is a cli tool for sending dhcpv4/v6 messages
+#[argh(description = "dhmsg is a cli tool for sending dhcpv4/v6 messages
+
+ex  dhcpv4:
+        dhmsg 0.0.0.0 discover -p 9901  (unicast discover to 0.0.0.0:9901)
+    dhcpv6:
+        dhmsg ::0 solicit -p 9901       (unicast solicit to ::0:9901)")]
 pub struct Args {
     /// IP address to send to
     #[argh(positional)]
-    pub ip: IpAddr,
+    pub target: IpAddr,
+    /// select a msg type (can't use solicit with v4, or discover with v6)
+    #[argh(positional)]
+    pub msg: MsgType,
     /// address to bind to
     #[argh(option, short = 'b')]
     pub bind: Option<IpAddr>,
@@ -120,6 +128,26 @@ pub struct Args {
     /// select the log output format
     #[argh(option, default = "LogStructure::Pretty")]
     pub output: LogStructure,
+}
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub enum MsgType {
+    Discover,
+    Request,
+    Solicit,
+}
+
+impl FromStr for MsgType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "discover" => Ok(Self::Discover),
+            "request" => Ok(Self::Request),
+            "solicit" => Ok(Self::Request),
+            _ => Err(anyhow!("unsupported message type")),
+        }
+    }
 }
 
 fn default_timeout() -> u64 {
