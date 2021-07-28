@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::Result;
-use crossbeam_channel::{bounded, select, tick, Receiver};
+use crossbeam_channel::{bounded, select, tick, Receiver, Sender};
 use tracing::{error, info, trace};
 
 use dhcproto::{
@@ -33,40 +33,9 @@ impl Runner {
 
         let (tx, rx) = bounded(100);
         // recv
-        let args = self.args.clone();
-        thread::spawn(move || {
-            let mut buf = vec![0; 1024];
-            let (len, addr) = recv.recv_from(&mut buf)?;
-            trace!(buf = ?&buf[..len], "recv");
-            let msg = if args.ip.is_ipv6() {
-                Msg::V6(v6::Message::decode(&mut Decoder::new(&buf[..len]))?)
-            } else {
-                Msg::V4(v4::Message::decode(&mut Decoder::new(&buf[..len]))?)
-            };
-            trace!(buf = ?msg, "decoded");
-            tx.send_timeout(msg, Duration::from_secs(1))?;
-            Ok::<_, anyhow::Error>(())
-        });
+        self.recv(tx, recv);
         // send
-        let args = self.args.clone();
-        thread::spawn(move || {
-            let target: SocketAddr = (args.ip, args.port.unwrap()).into();
-            let buf = if args.ip.is_ipv6() {
-                todo!()
-            } else {
-                let msg = v4::Message::new(
-                    Ipv4Addr::UNSPECIFIED,
-                    // TODO: use different yiaddr
-                    "192.168.0.1".parse().unwrap(),
-                    "192.168.0.1".parse().unwrap(),
-                    Ipv4Addr::UNSPECIFIED,
-                    &[222, 173, 192, 222, 202, 254],
-                );
-                msg.to_vec()
-            }?;
-            send.send_to(&buf[..], target)?;
-            Ok::<_, anyhow::Error>(())
-        });
+        self.send(send);
 
         let timeout = tick(Duration::from_secs(self.args.timeout));
         loop {
@@ -93,6 +62,45 @@ impl Runner {
             }
         }
         Ok(())
+    }
+
+    fn send(&self, send: Arc<UdpSocket>) {
+        let args = self.args.clone();
+        thread::spawn(move || {
+            let target: SocketAddr = (args.ip, args.port.unwrap()).into();
+            let buf = if args.ip.is_ipv6() {
+                todo!()
+            } else {
+                let msg = v4::Message::new(
+                    Ipv4Addr::UNSPECIFIED,
+                    // TODO: use different yiaddr
+                    "192.168.0.1".parse().unwrap(),
+                    "192.168.0.1".parse().unwrap(),
+                    Ipv4Addr::UNSPECIFIED,
+                    &args.chaddr.bytes(),
+                );
+                msg.to_vec()
+            }?;
+            send.send_to(&buf[..], target)?;
+            Ok::<_, anyhow::Error>(())
+        });
+    }
+
+    fn recv(&self, tx: Sender<Msg>, recv: Arc<UdpSocket>) {
+        let args = self.args.clone();
+        thread::spawn(move || {
+            let mut buf = vec![0; 1024];
+            let (len, addr) = recv.recv_from(&mut buf)?;
+            trace!(buf = ?&buf[..len], "recv");
+            let msg = if args.ip.is_ipv6() {
+                Msg::V6(v6::Message::decode(&mut Decoder::new(&buf[..len]))?)
+            } else {
+                Msg::V4(v4::Message::decode(&mut Decoder::new(&buf[..len]))?)
+            };
+            trace!(buf = ?msg, "decoded");
+            tx.send_timeout(msg, Duration::from_secs(1))?;
+            Ok::<_, anyhow::Error>(())
+        });
     }
 }
 

@@ -14,8 +14,9 @@ use std::{
 };
 
 use anyhow::{anyhow, Error, Result};
-use clap::Clap;
+use argh::FromArgs;
 use crossbeam_channel::Receiver;
+use mac_address::MacAddress;
 use tracing::{error, info, trace};
 use tracing_subscriber::{
     fmt::{self, format::Pretty},
@@ -28,7 +29,7 @@ mod runner;
 use runner::Runner;
 
 fn main() -> Result<()> {
-    let mut args = Args::parse();
+    let mut args: Args = argh::from_env();
 
     // set default port if none provided
     if args.port.is_none() {
@@ -60,7 +61,7 @@ fn main() -> Result<()> {
 }
 
 fn ctrl_channel() -> Result<Receiver<()>> {
-    let (sender, receiver) = crossbeam_channel::bounded(10);
+    let (sender, receiver) = crossbeam_channel::bounded(1);
     ctrlc::set_handler(move || {
         let _ = sender.send(());
     })?;
@@ -86,7 +87,7 @@ fn init_tracing(args: &Args) {
         LogStructure::Debug => {
             tracing_subscriber::registry()
                 .with(filter_layer)
-                .with(fmt::layer())
+                .with(fmt::layer().fmt_fields(Pretty::default()))
                 .init();
         }
         LogStructure::Json => {
@@ -98,24 +99,37 @@ fn init_tracing(args: &Args) {
     }
 }
 
-/// dhig is a cli tool for sending dhcpv4/v6 messages
-#[derive(Debug, Clap, Clone, PartialEq, Eq)]
-#[clap(author, about, version)]
+#[derive(Debug, FromArgs, Clone, PartialEq)]
+/// dhmsg is a cli tool for sending dhcpv4/v6 messages
 pub struct Args {
     /// IP address to send to
+    #[argh(positional)]
     pub ip: IpAddr,
     /// address to bind to
-    #[clap(long, short = 'b')]
+    #[argh(option, short = 'b')]
     pub bind: Option<IpAddr>,
     /// which port use. Default is 67 for dhcpv4 and 546 for dhcpv6
-    #[clap(long, short = 'p')]
+    #[argh(option, short = 'p')]
     pub port: Option<u16>,
+    /// supply a mac address for DHCPv4
+    #[argh(option, short = 'c', default = "get_mac()")]
+    pub chaddr: MacAddress,
     /// query timeout in seconds. Default is 3.
-    #[clap(long, short = 't', default_value = "3")]
+    #[argh(option, short = 't', default = "default_timeout()")]
     pub timeout: u64,
     /// select the log output format
-    #[clap(long, default_value = "pretty")]
+    #[argh(option, default = "LogStructure::Pretty")]
     pub output: LogStructure,
+}
+
+fn default_timeout() -> u64 {
+    3
+}
+
+fn get_mac() -> MacAddress {
+    mac_address::get_mac_address()
+        .expect("unable to get MAC addr")
+        .unwrap()
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
