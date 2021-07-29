@@ -89,7 +89,7 @@ impl Runner {
             } else {
                 Msg::V4(v4::Message::decode(&mut Decoder::new(&buf[..len]))?)
             };
-            trace!(buf = ?msg, "decoded");
+            info!(buf = ?msg, "decoded");
             tx.send_timeout(msg, Duration::from_secs(1))?;
             Ok::<_, anyhow::Error>(())
         });

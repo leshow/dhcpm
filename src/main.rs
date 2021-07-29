@@ -107,22 +107,22 @@ ex  dhcpv4:
     dhcpv6:
         dhmsg ::0 solicit -p 9901       (unicast solicit to ::0:9901)")]
 pub struct Args {
-    /// IP address to send to
+    /// ip address to send to
     #[argh(positional)]
     pub target: IpAddr,
     /// select a msg type (can't use solicit with v4, or discover with v6)
     #[argh(positional)]
     pub msg: MsgType,
-    /// address to bind to
+    /// address to bind to [default: INADDR_ANY]
     #[argh(option, short = 'b')]
     pub bind: Option<IpAddr>,
-    /// which port use. Default is 67 for dhcpv4 and 546 for dhcpv6
+    /// which port use. [default: 67 (v4) or 546 (v6)]
     #[argh(option, short = 'p')]
     pub port: Option<u16>,
-    /// supply a mac address for DHCPv4
+    /// supply a mac address for DHCPv4 [default: first avail mac]
     #[argh(option, short = 'c', default = "get_mac()")]
     pub chaddr: MacAddress,
-    /// query timeout in seconds. Default is 3.
+    /// query timeout in seconds [default: 3]
     #[argh(option, short = 't', default = "default_timeout()")]
     pub timeout: u64,
     /// select the log output format
