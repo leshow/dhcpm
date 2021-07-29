@@ -8,6 +8,7 @@ use std::{
 
 use anyhow::Result;
 use crossbeam_channel::{bounded, select, tick, Receiver, Sender};
+use mac_address::MacAddress;
 use tracing::{error, info, trace};
 
 use dhcproto::{
@@ -16,7 +17,7 @@ use dhcproto::{
     v4, v6,
 };
 
-use crate::Args;
+use crate::{Args, MsgType};
 
 #[derive(Debug)]
 pub struct Runner {
@@ -68,10 +69,9 @@ impl Runner {
         let args = self.args.clone();
         thread::spawn(move || {
             let target: SocketAddr = (args.target, args.port.unwrap()).into();
-            let buf = if args.target.is_ipv6() {
-                todo!()
-            } else {
-                v4_discover(&args).to_vec()
+            let buf = match args.msg {
+                MsgType::Discover(discover) => v4_discover(discover.chaddr).to_vec(),
+                _ => todo!(),
             }?;
             send.send_to(&buf[..], target)?;
             Ok::<_, anyhow::Error>(())
@@ -96,32 +96,38 @@ impl Runner {
     }
 }
 
-fn v4_discover(args: &Args) -> v4::Message {
+fn v4_discover(chaddr: MacAddress) -> v4::Message {
     let mut msg = v4::Message::new(
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
-        &args.chaddr.bytes(),
+        &chaddr.bytes(),
     );
+
     msg.opts_mut()
         .insert(v4::DhcpOption::MessageType(v4::MessageType::Discover));
+    msg.opts_mut()
+        .insert(v4::DhcpOption::ClientIdentifier(chaddr.bytes().to_vec()));
     msg.opts_mut().insert(v4::DhcpOption::AddressLeaseTime(120));
     msg
 }
 
-fn v4_request(args: &Args) -> v4::Message {
+fn v4_request(chaddr: MacAddress, requested_addr: Ipv4Addr, server: Ipv4Addr) -> v4::Message {
     let mut msg = v4::Message::new(
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
-        &args.chaddr.bytes(),
+        &chaddr.bytes(),
     );
 
     msg.opts_mut()
-        .insert(v4::DhcpOption::MessageType(v4::MessageType::Discover));
-    msg.opts_mut().insert(v4::DhcpOption::AddressLeaseTime(120));
+        .insert(v4::DhcpOption::MessageType(v4::MessageType::Request));
+    msg.opts_mut()
+        .insert(v4::DhcpOption::RequestedIpAddress(requested_addr));
+    msg.opts_mut()
+        .insert(v4::DhcpOption::ServerIdentifier(server));
     msg
 }
 
