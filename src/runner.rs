@@ -32,20 +32,28 @@ impl Runner {
         let send = Arc::new(UdpSocket::bind(bind_addr)?);
         let recv = Arc::clone(&send);
 
-        let (tx, rx) = bounded(100);
-        self.send_recv(tx, send, recv);
+        // this channel is for receiving a decoded v4/v6 message
+        let (tx, rx) = bounded(1);
+        // this is for controlling when we send so we're able to retry
+        let (retry_tx, retry_rx) = bounded(1);
+        self.recv(tx, recv);
+        self.send(retry_rx, send);
 
         let timeout = tick(Duration::from_secs(self.args.timeout));
-        loop {
+
+        retry_tx.send(()).expect("retry channel send failed");
+        let mut count = 0;
+        while count < 3 {
             select! {
                 recv(rx) -> res => {
                     match res {
                         Ok(msg) => {
-                            trace!(?msg, "downstream responded");
+                            info!(buf = ?msg, "decoded");
+                            break;
                         }
                         Err(err) => {
-                            error!(?err, "downstream responded with an error-- trying again");
-                            // TODO
+                            error!(?err, "channel returned error");
+                            break;
                         }
                     }
                 }
@@ -54,26 +62,27 @@ impl Runner {
                     break;
                 }
                 recv(timeout) -> _ => {
-                    trace!(elapsed = %PrettyDuration(start.elapsed()), "received timeout");
-                    break;
+                    trace!(elapsed = %PrettyDuration(start.elapsed()), "received timeout-- retrying");
+                    count += 1;
+                    retry_tx.send(()).expect("retry channel send failed");
+                    continue;
                 }
             }
         }
+        drop(retry_tx);
+
         Ok(())
     }
 
-    fn send_recv(&self, tx: Sender<Msg>, send: Arc<UdpSocket>, recv: Arc<UdpSocket>) {
-        // start recv thread
-        self.recv(tx, recv);
-        // start sender
+    fn send(&self, retry_rx: Receiver<()>, send: Arc<UdpSocket>) {
         let args = self.args.clone();
         thread::spawn(move || {
-            let target: SocketAddr = (args.target, args.port.unwrap()).into();
-            let buf = match args.msg {
-                MsgType::Discover(discover) => v4_discover(discover.chaddr).to_vec(),
-                _ => todo!(),
-            }?;
-            send.send_to(&buf[..], target)?;
+            while retry_rx.recv().is_ok() {
+                if let Err(err) = try_send(&args, &send) {
+                    error!(?err, "error sending");
+                }
+            }
+            error!("max retries-- exiting");
             Ok::<_, anyhow::Error>(())
         });
     }
@@ -81,19 +90,37 @@ impl Runner {
     fn recv(&self, tx: Sender<Msg>, recv: Arc<UdpSocket>) {
         let args = self.args.clone();
         thread::spawn(move || {
-            let mut buf = vec![0; 1024];
-            let (len, addr) = recv.recv_from(&mut buf)?;
-            trace!(buf = ?&buf[..len], "recv");
-            let msg = if args.target.is_ipv6() {
-                Msg::V6(v6::Message::decode(&mut Decoder::new(&buf[..len]))?)
-            } else {
-                Msg::V4(v4::Message::decode(&mut Decoder::new(&buf[..len]))?)
-            };
-            info!(buf = ?msg, "decoded");
-            tx.send_timeout(msg, Duration::from_secs(1))?;
+            if let Err(err) = try_recv(&args, &tx, &recv) {
+                error!(?err, "could not receive");
+            }
             Ok::<_, anyhow::Error>(())
         });
     }
+}
+
+fn try_recv(args: &Args, tx: &Sender<Msg>, recv: &Arc<UdpSocket>) -> Result<()> {
+    let mut buf = vec![0; 1024];
+    let (len, _addr) = recv.recv_from(&mut buf)?;
+    trace!(buf = ?&buf[..len], "recv");
+    let msg = if args.target.is_ipv6() {
+        Msg::V6(v6::Message::decode(&mut Decoder::new(&buf[..len]))?)
+    } else {
+        Msg::V4(v4::Message::decode(&mut Decoder::new(&buf[..len]))?)
+    };
+    tx.send_timeout(msg, Duration::from_secs(1))?;
+
+    Ok(())
+}
+
+fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
+    let target: SocketAddr = (args.target, args.port.unwrap()).into();
+    let msg = match args.msg {
+        MsgType::Discover(discover) => v4_discover(discover.chaddr),
+        _ => todo!(),
+    };
+    trace!(?msg, "sending msg");
+    send.send_to(&msg.to_vec()?[..], target)?;
+    Ok(())
 }
 
 fn v4_discover(chaddr: MacAddress) -> v4::Message {
@@ -110,6 +137,13 @@ fn v4_discover(chaddr: MacAddress) -> v4::Message {
     msg.opts_mut()
         .insert(v4::DhcpOption::ClientIdentifier(chaddr.bytes().to_vec()));
     msg.opts_mut().insert(v4::DhcpOption::AddressLeaseTime(120));
+    msg.opts_mut()
+        .insert(v4::DhcpOption::ParameterRequestList(vec![
+            v4::OptionCode::SubnetMask,
+            v4::OptionCode::Router,
+            v4::OptionCode::DomainNameServer,
+            v4::OptionCode::DomainName,
+        ])); // TODO: add more?
     msg
 }
 
