@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    net::{Ipv4Addr, SocketAddr, UdpSocket},
+    net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
     sync::Arc,
     thread,
     time::{Duration, Instant},
@@ -13,7 +13,7 @@ use tracing::{error, info, trace};
 
 use dhcproto::{
     decoder::{Decodable, Decoder},
-    encoder::{Encodable, Encoder},
+    encoder::Encodable,
     v4, v6,
 };
 
@@ -115,7 +115,7 @@ fn try_recv(args: &Args, tx: &Sender<Msg>, recv: &Arc<UdpSocket>) -> Result<()> 
 fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
     let target: SocketAddr = (args.target, args.port.unwrap()).into();
     let msg = match args.msg {
-        MsgType::Discover(discover) => v4_discover(discover.chaddr),
+        MsgType::Discover(discover) => v4_discover(discover.chaddr, args.req_addr),
         _ => todo!(),
     };
     trace!(?msg, "sending msg");
@@ -123,7 +123,7 @@ fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
     Ok(())
 }
 
-fn v4_discover(chaddr: MacAddress) -> v4::Message {
+fn v4_discover(chaddr: MacAddress, req_addr: Option<IpAddr>) -> v4::Message {
     let mut msg = v4::Message::new(
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
@@ -143,11 +143,17 @@ fn v4_discover(chaddr: MacAddress) -> v4::Message {
             v4::OptionCode::Router,
             v4::OptionCode::DomainNameServer,
             v4::OptionCode::DomainName,
-        ])); // TODO: add more?
+        ]));
+    // TODO: add more?
+    // add requested ip
+    if let Some(IpAddr::V4(ip)) = req_addr {
+        msg.opts_mut()
+            .insert(v4::DhcpOption::RequestedIpAddress(ip));
+    }
     msg
 }
 
-fn v4_request(chaddr: MacAddress, requested_addr: Ipv4Addr, server: Ipv4Addr) -> v4::Message {
+fn v4_request(chaddr: MacAddress, req_addr: Ipv4Addr, server: Ipv4Addr) -> v4::Message {
     let mut msg = v4::Message::new(
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
@@ -159,7 +165,7 @@ fn v4_request(chaddr: MacAddress, requested_addr: Ipv4Addr, server: Ipv4Addr) ->
     msg.opts_mut()
         .insert(v4::DhcpOption::MessageType(v4::MessageType::Request));
     msg.opts_mut()
-        .insert(v4::DhcpOption::RequestedIpAddress(requested_addr));
+        .insert(v4::DhcpOption::RequestedIpAddress(req_addr));
     msg.opts_mut()
         .insert(v4::DhcpOption::ServerIdentifier(server));
     msg

@@ -116,6 +116,9 @@ pub struct Args {
     /// address to bind to [default: INADDR_ANY]
     #[argh(option, short = 'b')]
     pub bind: Option<IpAddr>,
+    /// request specific ip [default: None]
+    #[argh(option, short = 'r')]
+    pub req_addr: Option<IpAddr>,
     /// which port use. [default: 67 (v4) or 546 (v6)]
     #[argh(option, short = 'p')]
     pub port: Option<u16>,
