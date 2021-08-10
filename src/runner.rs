@@ -17,7 +17,7 @@ use dhcproto::{
     v4, v6,
 };
 
-use crate::{Args, MsgType};
+use crate::{Args, DiscoverArgs, MsgType, RequestArgs};
 
 #[derive(Debug)]
 pub struct Runner {
@@ -115,27 +115,29 @@ fn try_recv(args: &Args, tx: &Sender<Msg>, recv: &Arc<UdpSocket>) -> Result<()> 
 fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
     let target: SocketAddr = (args.target, args.port.unwrap()).into();
     let msg = match args.msg {
-        MsgType::Discover(discover) => v4_discover(discover.chaddr, args.req_addr),
-        _ => todo!(),
+        MsgType::Discover(args) => v4_discover(args),
+        MsgType::Request(args) => v4_request(args),
+        MsgType::Solicit(_) => todo!("solicit unimplemented at the moment"),
     };
     trace!(?msg, "sending msg");
     send.send_to(&msg.to_vec()?[..], target)?;
     Ok(())
 }
 
-fn v4_discover(chaddr: MacAddress, req_addr: Option<IpAddr>) -> v4::Message {
+fn v4_discover(args: DiscoverArgs) -> v4::Message {
     let mut msg = v4::Message::new(
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
-        &chaddr.bytes(),
+        &args.chaddr.bytes(),
     );
 
     msg.opts_mut()
         .insert(v4::DhcpOption::MessageType(v4::MessageType::Discover));
-    msg.opts_mut()
-        .insert(v4::DhcpOption::ClientIdentifier(chaddr.bytes().to_vec()));
+    msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
+        args.chaddr.bytes().to_vec(),
+    ));
     msg.opts_mut().insert(v4::DhcpOption::AddressLeaseTime(120));
     msg.opts_mut()
         .insert(v4::DhcpOption::ParameterRequestList(vec![
@@ -146,28 +148,44 @@ fn v4_discover(chaddr: MacAddress, req_addr: Option<IpAddr>) -> v4::Message {
         ]));
     // TODO: add more?
     // add requested ip
-    if let Some(IpAddr::V4(ip)) = req_addr {
+    if let Some(IpAddr::V4(ip)) = args.req_addr {
         msg.opts_mut()
             .insert(v4::DhcpOption::RequestedIpAddress(ip));
     }
     msg
 }
 
-fn v4_request(chaddr: MacAddress, req_addr: Ipv4Addr, server: Ipv4Addr) -> v4::Message {
+fn v4_request(args: RequestArgs) -> v4::Message {
     let mut msg = v4::Message::new(
         Ipv4Addr::UNSPECIFIED,
+        args.yiaddr.unwrap_or(Ipv4Addr::UNSPECIFIED),
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
-        Ipv4Addr::UNSPECIFIED,
-        &chaddr.bytes(),
+        &args.chaddr.bytes(),
     );
 
     msg.opts_mut()
         .insert(v4::DhcpOption::MessageType(v4::MessageType::Request));
+    msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
+        args.chaddr.bytes().to_vec(),
+    ));
+    msg.opts_mut().insert(v4::DhcpOption::AddressLeaseTime(120));
     msg.opts_mut()
-        .insert(v4::DhcpOption::RequestedIpAddress(req_addr));
-    msg.opts_mut()
-        .insert(v4::DhcpOption::ServerIdentifier(server));
+        .insert(v4::DhcpOption::ParameterRequestList(vec![
+            v4::OptionCode::SubnetMask,
+            v4::OptionCode::Router,
+            v4::OptionCode::DomainNameServer,
+            v4::OptionCode::DomainName,
+        ]));
+    // TODO: add more?
+    // add requested ip
+    if let Some(ip) = args.req_addr {
+        msg.opts_mut()
+            .insert(v4::DhcpOption::RequestedIpAddress(ip));
+    }
+    if let Some(ip) = args.sident {
+        msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
+    }
     msg
 }
 
