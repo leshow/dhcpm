@@ -47,9 +47,14 @@ impl Runner {
             select! {
                 recv(rx) -> res => {
                     match res {
-                        Ok(msg) => {
-                            info!(buf = ?msg, "decoded");
+                        Ok(Msg::V4(msg)) => {
+                            info!(msg_type = ?msg.opts().msg_type().unwrap(), msg = %PrettyPrint(msg), "decoded");
                             break;
+                        }
+                        Ok(Msg::V6(msg)) => {
+                            info!(msg_type = ?msg.msg_type(), msg = %PrettyPrint(msg), "decoded");
+                            break;
+
                         }
                         Err(err) => {
                             error!(?err, "channel returned error");
@@ -113,13 +118,25 @@ fn try_recv(args: &Args, tx: &Sender<Msg>, recv: &Arc<UdpSocket>) -> Result<()> 
 }
 
 fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
-    let target: SocketAddr = (args.target, args.port.unwrap()).into();
     let msg = match args.msg {
         MsgType::Discover(args) => v4_discover(args),
         MsgType::Request(args) => v4_request(args),
         MsgType::Solicit(_) => todo!("solicit unimplemented at the moment"),
     };
-    trace!(?msg, "sending msg");
+    let target: SocketAddr = match args.target {
+        IpAddr::V4(addr) if addr.is_broadcast() => {
+            send.set_broadcast(true)?;
+            (args.target, args.port.unwrap()).into()
+        }
+        IpAddr::V4(addr) => (addr, args.port.unwrap()).into(),
+        IpAddr::V6(addr) if addr.is_multicast() => {
+            send.join_multicast_v6(&addr, 0)?;
+            (addr, args.port.unwrap()).into()
+        }
+        IpAddr::V6(addr) => (IpAddr::V6(addr), args.port.unwrap()).into(),
+    };
+    info!(msg_type = ?msg.opts().msg_type().unwrap(), ?target, msg = %PrettyPrint(&msg), "sending msg");
+
     send.send_to(&msg.to_vec()?[..], target)?;
     Ok(())
 }
@@ -138,7 +155,6 @@ fn v4_discover(args: DiscoverArgs) -> v4::Message {
     msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
         args.chaddr.bytes().to_vec(),
     ));
-    msg.opts_mut().insert(v4::DhcpOption::AddressLeaseTime(120));
     msg.opts_mut()
         .insert(v4::DhcpOption::ParameterRequestList(vec![
             v4::OptionCode::SubnetMask,
@@ -169,7 +185,6 @@ fn v4_request(args: RequestArgs) -> v4::Message {
     msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
         args.chaddr.bytes().to_vec(),
     ));
-    msg.opts_mut().insert(v4::DhcpOption::AddressLeaseTime(120));
     msg.opts_mut()
         .insert(v4::DhcpOption::ParameterRequestList(vec![
             v4::OptionCode::SubnetMask,
@@ -177,9 +192,8 @@ fn v4_request(args: RequestArgs) -> v4::Message {
             v4::OptionCode::DomainNameServer,
             v4::OptionCode::DomainName,
         ]));
-    // TODO: add more?
     // add requested ip
-    if let Some(ip) = args.req_addr {
+    if let Some(ip) = args.opt_req_addr {
         msg.opts_mut()
             .insert(v4::DhcpOption::RequestedIpAddress(ip));
     }
@@ -195,6 +209,15 @@ struct PrettyDuration(Duration);
 impl fmt::Display for PrettyDuration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}s", &self.0.as_secs_f32().to_string()[0..=4])
+    }
+}
+
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+struct PrettyPrint<T>(T);
+
+impl<T: fmt::Debug> fmt::Display for PrettyPrint<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#?}", &self.0)
     }
 }
 

@@ -104,11 +104,11 @@ dependencies = [
 
 [[package]]
 name = "ctrlc"
-version = "3.1.9"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "232295399409a8b7ae41276757b5a1cc21032848d42bff2352261f958b3ca29a"
+checksum = "377c9b002a72a0b2c1a18c62e2f3864bdfea4a015e3683a96e24aa45dd6c02d1"
 dependencies = [
- "nix 0.20.0",
+ "nix",
  "winapi",
 ]
 
@@ -130,7 +130,7 @@ dependencies = [
 [[package]]
 name = "dhcproto"
 version = "0.1.0"
-source = "git+ssh://git@gitlab.bluecatlabs.net/ecameron/dhcp#28e4709c07b922ae02f89bf69e613ab8cbaf9530"
+source = "git+ssh://git@gitlab.bluecatlabs.net/ecameron/dhcp#65c63d9ef5f06b7d0d3d88ec6020a73becab0413"
 dependencies = [
  "rand",
  "thiserror",
@@ -170,9 +170,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.98"
+version = "0.2.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "320cfe77175da3a483efed4bc0adc1968ca050b098ce4f2f1c13a56626128790"
+checksum = "a7f823d141fe0a24df1e23b4af4e3c7ba9e5966ec514ea068c93024aa7deb765"
 
 [[package]]
 name = "log"
@@ -185,11 +185,11 @@ dependencies = [
 
 [[package]]
 name = "mac_address"
-version = "1.1.1"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d9bb26482176bddeea173ceaa2acec85146d20cdcc631eafaf9d605d3d4fc23"
+checksum = "89544d9544366f6cda81244514a80809b137b5a179947b73bfa9f2797480de69"
 dependencies = [
- "nix 0.19.1",
+ "nix",
  "winapi",
 ]
 
@@ -203,27 +203,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "nix"
-version = "0.19.1"
+name = "memoffset"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2ccba0cfe4fdf15982d1674c69b1fd80bad427d293849982668dfe454bd61f2"
+checksum = "59accc507f1338036a0477ef61afdae33cde60840f4dfe481319ce3ad116ddf9"
 dependencies = [
- "bitflags",
- "cc",
- "cfg-if",
- "libc",
+ "autocfg",
 ]
 
 [[package]]
 name = "nix"
-version = "0.20.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa9b4819da1bc61c0ea48b63b7bc8604064dd43013e7cc325df098d49cd7c18a"
+checksum = "cf1e25ee6b412c2a1e3fcb6a4499a5c1bfe7f43e014bdce9a6b6666e5aa2d187"
 dependencies = [
  "bitflags",
  "cc",
  "cfg-if",
  "libc",
+ "memoffset",
 ]
 
 [[package]]

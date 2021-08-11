@@ -103,9 +103,12 @@ fn init_tracing(args: &Args) {
 #[argh(description = "dhmsg is a cli tool for sending dhcpv4/v6 messages
 
 ex  dhcpv4:
-        dhmsg 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
+        dhcpm 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
+        dhcpm 255.255.255.255 discover (broadcast discover to default dhcp port)
     dhcpv6:
-        dhmsg ::0 -p 9901 solicit       (unicast solicit to [::0]:9901)")]
+        dhcpm ::0 -p 9901 solicit       (unicast solicit to [::0]:9901)
+        dhcpm ff02::1:2 solicit         (multicast solicit to default port)
+        ")]
 pub struct Args {
     /// ip address to send to
     #[argh(positional)]
@@ -155,14 +158,14 @@ pub struct RequestArgs {
     #[argh(option, short = 'c', default = "get_mac()")]
     pub chaddr: MacAddress,
     /// address for client [default: None]
-    #[argh(option)]
+    #[argh(option, short = 'y')]
     pub yiaddr: Option<Ipv4Addr>,
     /// server identifier [default: None]
     #[argh(option, short = 's')]
     pub sident: Option<Ipv4Addr>,
-    /// request specific ip [default: None]
+    /// specify dhcp option for requesting ip [default: None]
     #[argh(option, short = 'r')]
-    pub req_addr: Option<Ipv4Addr>,
+    pub opt_req_addr: Option<Ipv4Addr>,
 }
 
 #[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
