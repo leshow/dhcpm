@@ -118,14 +118,11 @@ fn try_recv(args: &Args, tx: &Sender<Msg>, recv: &Arc<UdpSocket>) -> Result<()> 
 }
 
 fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
-    let msg = match args.msg {
-        MsgType::Discover(args) => v4_discover(args),
-        MsgType::Request(args) => v4_request(args),
-        MsgType::Solicit(_) => todo!("solicit unimplemented at the moment"),
-    };
+    let mut broadcast = false;
     let target: SocketAddr = match args.target {
         IpAddr::V4(addr) if addr.is_broadcast() => {
             send.set_broadcast(true)?;
+            broadcast = true;
             (args.target, args.port.unwrap()).into()
         }
         IpAddr::V4(addr) => (addr, args.port.unwrap()).into(),
@@ -135,13 +132,19 @@ fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
         }
         IpAddr::V6(addr) => (IpAddr::V6(addr), args.port.unwrap()).into(),
     };
+    let msg = match args.msg {
+        MsgType::Discover(args) => v4_discover(args, broadcast),
+        MsgType::Request(args) => v4_request(args),
+        MsgType::Solicit(_) => todo!("solicit unimplemented at the moment"),
+    };
+
     info!(msg_type = ?msg.opts().msg_type().unwrap(), ?target, msg = %PrettyPrint(&msg), "sending msg");
 
     send.send_to(&msg.to_vec()?[..], target)?;
     Ok(())
 }
 
-fn v4_discover(args: DiscoverArgs) -> v4::Message {
+fn v4_discover(args: DiscoverArgs, broadcast: bool) -> v4::Message {
     let mut msg = v4::Message::new(
         Ipv4Addr::UNSPECIFIED,
         Ipv4Addr::UNSPECIFIED,
@@ -150,6 +153,9 @@ fn v4_discover(args: DiscoverArgs) -> v4::Message {
         &args.chaddr.bytes(),
     );
 
+    if broadcast {
+        msg.set_flags(v4::Flags::default().set_broadcast());
+    }
     msg.opts_mut()
         .insert(v4::DhcpOption::MessageType(v4::MessageType::Discover));
     msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
