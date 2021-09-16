@@ -129,8 +129,9 @@ dependencies = [
 
 [[package]]
 name = "dhcproto"
-version = "0.1.0"
-source = "git+ssh://git@gitlab.bluecatlabs.net/ecameron/dhcp#65c63d9ef5f06b7d0d3d88ec6020a73becab0413"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34e32a28b6defaef1e3f8669301a9c724fdfe71d0852d96bad2dc49e948c333c"
 dependencies = [
  "rand",
  "thiserror",
