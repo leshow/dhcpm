@@ -2,6 +2,10 @@
 
 A cli tool for constructing & sending dhcp client messages, without actually binding on an interface. Aims to support v4 & v6, though v6 support is unfinished. Allows sending dhcp messages to arbitrary ports and ips.
 
+## Sponsor
+
+Thank you to [Bluecat](https://bluecatnetworks.com/) for sponsoring this work! `dhcpm` leverages [dhcproto](https://github.com/bluecatengineering/dhcproto) which is also worth checking out.
+
 ## Use
 
 ```
