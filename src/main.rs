@@ -265,7 +265,7 @@ impl RequestArgs {
                 v4::OptionCode::DomainNameServer,
                 v4::OptionCode::DomainName,
             ]));
-        // add requested ip
+
         if let Some(ip) = self.sident {
             msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
         }
@@ -334,7 +334,7 @@ impl ReleaseArgs {
                 v4::OptionCode::DomainNameServer,
                 v4::OptionCode::DomainName,
             ]));
-        // add requested ip
+
         if let Some(ip) = self.sident {
             msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
         }
