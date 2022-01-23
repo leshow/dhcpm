@@ -9,15 +9,16 @@
 #![allow(clippy::cognitive_complexity)]
 
 use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     str::FromStr,
 };
 
 use anyhow::{anyhow, Error, Result};
 use argh::FromArgs;
 use crossbeam_channel::Receiver;
+use dhcproto::v4;
 use mac_address::MacAddress;
-use tracing::{error, info, trace};
+use tracing::{error, trace};
 use tracing_subscriber::{
     fmt::{self, format::Pretty},
     prelude::__tracing_subscriber_SubscriberExt,
@@ -31,8 +32,10 @@ use runner::Runner;
 fn main() -> Result<()> {
     let mut args: Args = argh::from_env();
 
+    let mut default_port = false;
     // set default port if none provided
     if args.port.is_none() {
+        default_port = true;
         if args.target.is_ipv6() {
             args.port = Some(546);
         } else {
@@ -42,9 +45,17 @@ fn main() -> Result<()> {
 
     if args.bind.is_none() {
         if args.target.is_ipv6() {
-            args.bind = Some(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
+            if default_port {
+                args.bind = Some(SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 547));
+            } else {
+                args.bind = Some(SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0));
+            }
         } else {
-            args.bind = Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+            if default_port {
+                args.bind = Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 68));
+            } else {
+                args.bind = Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0));
+            }
         }
     }
 
@@ -100,7 +111,7 @@ fn init_tracing(args: &Args) {
 }
 
 #[derive(Debug, FromArgs, Clone, PartialEq)]
-#[argh(description = "dhmsg is a cli tool for sending dhcpv4/v6 messages
+#[argh(description = "dhcpm is a cli tool for sending dhcpv4/v6 messages
 
 ex  dhcpv4:
         dhcpm 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
@@ -116,9 +127,9 @@ pub struct Args {
     /// select a msg type (can't use solicit with v4, or discover with v6)
     #[argh(subcommand)]
     pub msg: MsgType,
-    /// address to bind to [default: INADDR_ANY]
+    /// address to bind to [default: INADDR_ANY:0]
     #[argh(option, short = 'b')]
-    pub bind: Option<IpAddr>,
+    pub bind: Option<SocketAddr>,
     /// which port use. [default: 67 (v4) or 546 (v6)]
     #[argh(option, short = 'p')]
     pub port: Option<u16>,
@@ -135,6 +146,7 @@ pub struct Args {
 pub enum MsgType {
     Discover(DiscoverArgs),
     Request(RequestArgs),
+    Release(ReleaseArgs),
     Solicit(SolicitArgs),
 }
 
@@ -147,7 +159,61 @@ pub struct DiscoverArgs {
     pub chaddr: MacAddress,
     /// request specific ip [default: None]
     #[argh(option, short = 'r')]
-    pub req_addr: Option<IpAddr>,
+    pub req_addr: Option<Ipv4Addr>,
+    /// giaddr [default: 0.0.0.0]
+    #[argh(option, short = 'g', default = "Ipv4Addr::UNSPECIFIED")]
+    pub giaddr: Ipv4Addr,
+    /// subnet selection opt 118 [default: None]
+    #[argh(option)]
+    pub subnet_select: Option<Ipv4Addr>,
+    /// relay link select opt 82 subopt 5 [default: None]
+    #[argh(option)]
+    pub relay_link: Option<Ipv4Addr>,
+}
+
+impl DiscoverArgs {
+    fn build(self, broadcast: bool) -> v4::Message {
+        let mut msg = v4::Message::new(
+            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::UNSPECIFIED,
+            self.giaddr,
+            &self.chaddr.bytes(),
+        );
+
+        if broadcast {
+            msg.set_flags(v4::Flags::default().set_broadcast());
+        }
+        msg.opts_mut()
+            .insert(v4::DhcpOption::MessageType(v4::MessageType::Discover));
+        msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
+            self.chaddr.bytes().to_vec(),
+        ));
+        msg.opts_mut()
+            .insert(v4::DhcpOption::ParameterRequestList(vec![
+                v4::OptionCode::SubnetMask,
+                v4::OptionCode::Router,
+                v4::OptionCode::DomainNameServer,
+                v4::OptionCode::DomainName,
+            ]));
+        // TODO: add more?
+        // add requested ip
+        if let Some(ip) = self.req_addr {
+            msg.opts_mut()
+                .insert(v4::DhcpOption::RequestedIpAddress(ip));
+        }
+        if let Some(ip) = self.relay_link {
+            let mut info = v4::relay::RelayAgentInformation::default();
+            info.insert(v4::relay::RelayInfo::LinkSelection(ip));
+            msg.opts_mut()
+                .insert(v4::DhcpOption::RelayAgentInformation(info));
+        }
+
+        if let Some(ip) = self.subnet_select {
+            msg.opts_mut().insert(v4::DhcpOption::SubnetSelection(ip));
+        }
+        msg
+    }
 }
 
 #[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
@@ -158,14 +224,133 @@ pub struct RequestArgs {
     #[argh(option, short = 'c', default = "get_mac()")]
     pub chaddr: MacAddress,
     /// address for client [default: None]
-    #[argh(option, short = 'y')]
-    pub yiaddr: Option<Ipv4Addr>,
+    #[argh(option, short = 'y', default = "Ipv4Addr::UNSPECIFIED")]
+    pub yiaddr: Ipv4Addr,
     /// server identifier [default: None]
     #[argh(option, short = 's')]
     pub sident: Option<Ipv4Addr>,
     /// specify dhcp option for requesting ip [default: None]
     #[argh(option, short = 'r')]
-    pub opt_req_addr: Option<Ipv4Addr>,
+    pub req_addr: Option<Ipv4Addr>,
+    /// giaddr [default: 0.0.0.0]
+    #[argh(option, short = 'g', default = "Ipv4Addr::UNSPECIFIED")]
+    pub giaddr: Ipv4Addr,
+    /// subnet selection opt 118 [default: None]
+    #[argh(option)]
+    pub subnet_select: Option<Ipv4Addr>,
+    /// relay link select opt 82 subopt 5 [default: None]
+    #[argh(option)]
+    pub relay_link: Option<Ipv4Addr>,
+}
+
+impl RequestArgs {
+    fn build(self) -> v4::Message {
+        let mut msg = v4::Message::new(
+            Ipv4Addr::UNSPECIFIED,
+            self.yiaddr,
+            Ipv4Addr::UNSPECIFIED,
+            self.giaddr,
+            &self.chaddr.bytes(),
+        );
+
+        msg.opts_mut()
+            .insert(v4::DhcpOption::MessageType(v4::MessageType::Request));
+        msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
+            self.chaddr.bytes().to_vec(),
+        ));
+        msg.opts_mut()
+            .insert(v4::DhcpOption::ParameterRequestList(vec![
+                v4::OptionCode::SubnetMask,
+                v4::OptionCode::Router,
+                v4::OptionCode::DomainNameServer,
+                v4::OptionCode::DomainName,
+            ]));
+        // add requested ip
+        if let Some(ip) = self.sident {
+            msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
+        }
+
+        if let Some(ip) = self.req_addr {
+            msg.opts_mut()
+                .insert(v4::DhcpOption::RequestedIpAddress(ip));
+        }
+        if let Some(ip) = self.relay_link {
+            let mut info = v4::relay::RelayAgentInformation::default();
+            info.insert(v4::relay::RelayInfo::LinkSelection(ip));
+            msg.opts_mut()
+                .insert(v4::DhcpOption::RelayAgentInformation(info));
+        }
+
+        if let Some(ip) = self.subnet_select {
+            msg.opts_mut().insert(v4::DhcpOption::SubnetSelection(ip));
+        }
+        msg
+    }
+}
+
+#[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
+/// Send a RELEASE msg
+#[argh(subcommand, name = "release")]
+pub struct ReleaseArgs {
+    /// supply a mac address for DHCPv4 [default: first avail mac]
+    #[argh(option, short = 'c', default = "get_mac()")]
+    pub chaddr: MacAddress,
+    /// address for client [default: None]
+    #[argh(option, short = 'y', default = "Ipv4Addr::UNSPECIFIED")]
+    pub yiaddr: Ipv4Addr,
+    /// server identifier [default: None]
+    #[argh(option, short = 's')]
+    pub sident: Option<Ipv4Addr>,
+    /// giaddr [default: 0.0.0.0]
+    #[argh(option, short = 'g', default = "Ipv4Addr::UNSPECIFIED")]
+    pub giaddr: Ipv4Addr,
+    /// subnet selection opt 118 [default: None]
+    #[argh(option)]
+    pub subnet_select: Option<Ipv4Addr>,
+    /// relay link select opt 82 subopt 5 [default: None]
+    #[argh(option)]
+    pub relay_link: Option<Ipv4Addr>,
+}
+
+impl ReleaseArgs {
+    fn build(self) -> v4::Message {
+        let mut msg = v4::Message::new(
+            Ipv4Addr::UNSPECIFIED,
+            self.yiaddr,
+            Ipv4Addr::UNSPECIFIED,
+            self.giaddr,
+            &self.chaddr.bytes(),
+        );
+
+        msg.opts_mut()
+            .insert(v4::DhcpOption::MessageType(v4::MessageType::Request));
+        msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
+            self.chaddr.bytes().to_vec(),
+        ));
+        msg.opts_mut()
+            .insert(v4::DhcpOption::ParameterRequestList(vec![
+                v4::OptionCode::SubnetMask,
+                v4::OptionCode::Router,
+                v4::OptionCode::DomainNameServer,
+                v4::OptionCode::DomainName,
+            ]));
+        // add requested ip
+        if let Some(ip) = self.sident {
+            msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
+        }
+
+        if let Some(ip) = self.relay_link {
+            let mut info = v4::relay::RelayAgentInformation::default();
+            info.insert(v4::relay::RelayInfo::LinkSelection(ip));
+            msg.opts_mut()
+                .insert(v4::DhcpOption::RelayAgentInformation(info));
+        }
+
+        if let Some(ip) = self.subnet_select {
+            msg.opts_mut().insert(v4::DhcpOption::SubnetSelection(ip));
+        }
+        msg
+    }
 }
 
 #[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
