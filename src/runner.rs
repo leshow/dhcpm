@@ -134,8 +134,9 @@ fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
     let msg = match args.msg {
         // dhcpv4
         MsgType::Discover(args) => args.build(broadcast),
-        MsgType::Request(args) => args.build(),
+        MsgType::Request(args) => args.build(broadcast),
         MsgType::Release(args) => args.build(),
+        MsgType::Inform(args) => args.build(),
         // dhcpv6
         MsgType::Solicit(_) => todo!("solicit unimplemented at the moment"),
     };

@@ -251,7 +251,7 @@ pub struct RequestArgs {
 }
 
 impl RequestArgs {
-    fn build(self) -> v4::Message {
+    fn build(self, broadcast: bool) -> v4::Message {
         let mut msg = v4::Message::new(
             self.ciaddr,
             self.yiaddr,
@@ -259,6 +259,10 @@ impl RequestArgs {
             self.giaddr,
             &self.chaddr.bytes(),
         );
+
+        if broadcast {
+            msg.set_flags(v4::Flags::default().set_broadcast());
+        }
 
         msg.opts_mut()
             .insert(v4::DhcpOption::MessageType(v4::MessageType::Request));
