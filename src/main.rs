@@ -147,6 +147,7 @@ pub enum MsgType {
     Discover(DiscoverArgs),
     Request(RequestArgs),
     Release(ReleaseArgs),
+    Inform(InformArgs),
     Solicit(SolicitArgs),
 }
 
@@ -157,6 +158,9 @@ pub struct DiscoverArgs {
     /// supply a mac address for DHCPv4 [default: first avail mac]
     #[argh(option, short = 'c', default = "get_mac()")]
     pub chaddr: MacAddress,
+    /// address of client [default: None]
+    #[argh(option, default = "Ipv4Addr::UNSPECIFIED")]
+    pub ciaddr: Ipv4Addr,
     /// request specific ip [default: None]
     #[argh(option, short = 'r')]
     pub req_addr: Option<Ipv4Addr>,
@@ -174,7 +178,7 @@ pub struct DiscoverArgs {
 impl DiscoverArgs {
     fn build(self, broadcast: bool) -> v4::Message {
         let mut msg = v4::Message::new(
-            Ipv4Addr::UNSPECIFIED,
+            self.ciaddr,
             Ipv4Addr::UNSPECIFIED,
             Ipv4Addr::UNSPECIFIED,
             self.giaddr,
@@ -226,6 +230,9 @@ pub struct RequestArgs {
     /// address for client [default: None]
     #[argh(option, short = 'y', default = "Ipv4Addr::UNSPECIFIED")]
     pub yiaddr: Ipv4Addr,
+    /// address of client [default: None]
+    #[argh(option, default = "Ipv4Addr::UNSPECIFIED")]
+    pub ciaddr: Ipv4Addr,
     /// server identifier [default: None]
     #[argh(option, short = 's')]
     pub sident: Option<Ipv4Addr>,
@@ -246,7 +253,7 @@ pub struct RequestArgs {
 impl RequestArgs {
     fn build(self) -> v4::Message {
         let mut msg = v4::Message::new(
-            Ipv4Addr::UNSPECIFIED,
+            self.ciaddr,
             self.yiaddr,
             Ipv4Addr::UNSPECIFIED,
             self.giaddr,
@@ -295,15 +302,18 @@ pub struct ReleaseArgs {
     /// supply a mac address for DHCPv4 [default: first avail mac]
     #[argh(option, short = 'c', default = "get_mac()")]
     pub chaddr: MacAddress,
-    /// address for client [default: None]
+    /// giaddr [default: 0.0.0.0]
+    #[argh(option, short = 'g', default = "Ipv4Addr::UNSPECIFIED")]
+    pub giaddr: Ipv4Addr,
+    /// address of client [default: None]
+    #[argh(option, default = "Ipv4Addr::UNSPECIFIED")]
+    pub ciaddr: Ipv4Addr,
+    /// yiaddr [default: None]
     #[argh(option, short = 'y', default = "Ipv4Addr::UNSPECIFIED")]
     pub yiaddr: Ipv4Addr,
     /// server identifier [default: None]
     #[argh(option, short = 's')]
     pub sident: Option<Ipv4Addr>,
-    /// giaddr [default: 0.0.0.0]
-    #[argh(option, short = 'g', default = "Ipv4Addr::UNSPECIFIED")]
-    pub giaddr: Ipv4Addr,
     /// subnet selection opt 118 [default: None]
     #[argh(option)]
     pub subnet_select: Option<Ipv4Addr>,
@@ -315,7 +325,7 @@ pub struct ReleaseArgs {
 impl ReleaseArgs {
     fn build(self) -> v4::Message {
         let mut msg = v4::Message::new(
-            Ipv4Addr::UNSPECIFIED,
+            self.ciaddr,
             self.yiaddr,
             Ipv4Addr::UNSPECIFIED,
             self.giaddr,
@@ -323,7 +333,7 @@ impl ReleaseArgs {
         );
 
         msg.opts_mut()
-            .insert(v4::DhcpOption::MessageType(v4::MessageType::Request));
+            .insert(v4::DhcpOption::MessageType(v4::MessageType::Release));
         msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
             self.chaddr.bytes().to_vec(),
         ));
@@ -346,6 +356,73 @@ impl ReleaseArgs {
                 .insert(v4::DhcpOption::RelayAgentInformation(info));
         }
 
+        if let Some(ip) = self.subnet_select {
+            msg.opts_mut().insert(v4::DhcpOption::SubnetSelection(ip));
+        }
+        msg
+    }
+}
+
+#[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
+/// Send a INFORM msg
+#[argh(subcommand, name = "inform")]
+pub struct InformArgs {
+    /// supply a mac address for DHCPv4 [default: first avail mac]
+    #[argh(option, short = 'c', default = "get_mac()")]
+    pub chaddr: MacAddress,
+    /// address for client [default: 0.0.0.0]
+    #[argh(option, short = 'y', default = "Ipv4Addr::UNSPECIFIED")]
+    pub yiaddr: Ipv4Addr,
+    /// address of client [default: 0.0.0.0]
+    #[argh(option, default = "Ipv4Addr::UNSPECIFIED")]
+    pub ciaddr: Ipv4Addr,
+    /// server identifier [default: None]
+    #[argh(option, short = 's')]
+    pub sident: Option<Ipv4Addr>,
+    /// giaddr [default: 0.0.0.0]
+    #[argh(option, short = 'g', default = "Ipv4Addr::UNSPECIFIED")]
+    pub giaddr: Ipv4Addr,
+    /// subnet selection opt 118 [default: None]
+    #[argh(option)]
+    pub subnet_select: Option<Ipv4Addr>,
+    /// relay link select opt 82 subopt 5 [default: None]
+    #[argh(option)]
+    pub relay_link: Option<Ipv4Addr>,
+}
+
+impl InformArgs {
+    fn build(self) -> v4::Message {
+        let mut msg = v4::Message::new(
+            self.ciaddr,
+            self.yiaddr,
+            Ipv4Addr::UNSPECIFIED,
+            self.giaddr,
+            &self.chaddr.bytes(),
+        );
+
+        // TODO use Inform
+        msg.opts_mut()
+            .insert(v4::DhcpOption::MessageType(v4::MessageType::Unknown(8)));
+        msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
+            self.chaddr.bytes().to_vec(),
+        ));
+        msg.opts_mut()
+            .insert(v4::DhcpOption::ParameterRequestList(vec![
+                v4::OptionCode::SubnetMask,
+                v4::OptionCode::Router,
+                v4::OptionCode::DomainNameServer,
+                v4::OptionCode::DomainName,
+            ]));
+
+        if let Some(ip) = self.sident {
+            msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
+        }
+        if let Some(ip) = self.relay_link {
+            let mut info = v4::relay::RelayAgentInformation::default();
+            info.insert(v4::relay::RelayInfo::LinkSelection(ip));
+            msg.opts_mut()
+                .insert(v4::DhcpOption::RelayAgentInformation(info));
+        }
         if let Some(ip) = self.subnet_select {
             msg.opts_mut().insert(v4::DhcpOption::SubnetSelection(ip));
         }
