@@ -142,9 +142,9 @@ pub struct DiscoverArgs {
     #[argh(option)]
     pub relay_link: Option<Ipv4Addr>,
     /// add opts to the message
-    /// [ex: these are equivalent, "118,hex,C0A80001" or "118,ip,192.168.0.1"]
+    /// [ex: these are equivalent- "118,hex,C0A80001" or "118,ip,192.168.0.1"]
     #[argh(option, short = 'o', from_str_fn(parse_opts))]
-    pub opts: Vec<v4::DhcpOption>,
+    pub opt: Vec<v4::DhcpOption>,
     /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
     #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
     pub params: Vec<v4::OptionCode>,
@@ -172,7 +172,7 @@ impl DiscoverArgs {
         msg.opts_mut()
             .insert(v4::DhcpOption::ParameterRequestList(self.params.clone()));
         // insert manually entered opts
-        for opt in &self.opts {
+        for opt in &self.opt {
             msg.opts_mut().insert(opt.clone());
         }
         // add requested ip
@@ -194,7 +194,7 @@ impl DiscoverArgs {
     }
 }
 
-#[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
+#[derive(FromArgs, PartialEq, Debug, Clone)]
 /// Send a REQUEST msg
 #[argh(subcommand, name = "request")]
 pub struct RequestArgs {
@@ -222,10 +222,17 @@ pub struct RequestArgs {
     /// relay link select opt 82 subopt 5 [default: None]
     #[argh(option)]
     pub relay_link: Option<Ipv4Addr>,
+    /// add opts to the message
+    /// [ex: these are equivalent- "118,hex,C0A80001" or "118,ip,192.168.0.1"]
+    #[argh(option, short = 'o', from_str_fn(parse_opts))]
+    pub opt: Vec<v4::DhcpOption>,
+    /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
+    #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
+    pub params: Vec<v4::OptionCode>,
 }
 
 impl RequestArgs {
-    fn build(self, broadcast: bool) -> v4::Message {
+    fn build(&self, broadcast: bool) -> v4::Message {
         let mut msg = v4::Message::new(
             self.ciaddr,
             self.yiaddr,
@@ -243,14 +250,13 @@ impl RequestArgs {
         msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
             self.chaddr.bytes().to_vec(),
         ));
+        // insert parse params
         msg.opts_mut()
-            .insert(v4::DhcpOption::ParameterRequestList(vec![
-                v4::OptionCode::SubnetMask,
-                v4::OptionCode::Router,
-                v4::OptionCode::DomainNameServer,
-                v4::OptionCode::DomainName,
-            ]));
-
+            .insert(v4::DhcpOption::ParameterRequestList(self.params.clone()));
+        // insert manually entered opts
+        for opt in &self.opt {
+            msg.opts_mut().insert(opt.clone());
+        }
         if let Some(ip) = self.sident {
             msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
         }
@@ -273,7 +279,7 @@ impl RequestArgs {
     }
 }
 
-#[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
+#[derive(FromArgs, PartialEq, Debug, Clone)]
 /// Send a RELEASE msg
 #[argh(subcommand, name = "release")]
 pub struct ReleaseArgs {
@@ -298,10 +304,17 @@ pub struct ReleaseArgs {
     /// relay link select opt 82 subopt 5 [default: None]
     #[argh(option)]
     pub relay_link: Option<Ipv4Addr>,
+    /// add opts to the message
+    /// [ex: these are equivalent- "118,hex,C0A80001" or "118,ip,192.168.0.1"]
+    #[argh(option, short = 'o', from_str_fn(parse_opts))]
+    pub opt: Vec<v4::DhcpOption>,
+    /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
+    #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
+    pub params: Vec<v4::OptionCode>,
 }
 
 impl ReleaseArgs {
-    fn build(self) -> v4::Message {
+    fn build(&self) -> v4::Message {
         let mut msg = v4::Message::new(
             self.ciaddr,
             self.yiaddr,
@@ -316,12 +329,14 @@ impl ReleaseArgs {
             self.chaddr.bytes().to_vec(),
         ));
         msg.opts_mut()
-            .insert(v4::DhcpOption::ParameterRequestList(vec![
-                v4::OptionCode::SubnetMask,
-                v4::OptionCode::Router,
-                v4::OptionCode::DomainNameServer,
-                v4::OptionCode::DomainName,
-            ]));
+            .insert(v4::DhcpOption::ParameterRequestList(self.params.clone()));
+        // insert manually entered opts
+        for opt in &self.opt {
+            msg.opts_mut().insert(opt.clone());
+        }
+        if let Some(ip) = self.sident {
+            msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
+        }
 
         if let Some(ip) = self.sident {
             msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
@@ -341,7 +356,7 @@ impl ReleaseArgs {
     }
 }
 
-#[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
+#[derive(FromArgs, PartialEq, Debug, Clone)]
 /// Send a INFORM msg
 #[argh(subcommand, name = "inform")]
 pub struct InformArgs {
@@ -366,10 +381,17 @@ pub struct InformArgs {
     /// relay link select opt 82 subopt 5 [default: None]
     #[argh(option)]
     pub relay_link: Option<Ipv4Addr>,
+    /// add opts to the message
+    /// [ex: these are equivalent- "118,hex,C0A80001" or "118,ip,192.168.0.1"]
+    #[argh(option, short = 'o', from_str_fn(parse_opts))]
+    pub opt: Vec<v4::DhcpOption>,
+    /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
+    #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
+    pub params: Vec<v4::OptionCode>,
 }
 
 impl InformArgs {
-    fn build(self) -> v4::Message {
+    fn build(&self) -> v4::Message {
         let mut msg = v4::Message::new(
             self.ciaddr,
             self.yiaddr,
@@ -385,12 +407,14 @@ impl InformArgs {
             self.chaddr.bytes().to_vec(),
         ));
         msg.opts_mut()
-            .insert(v4::DhcpOption::ParameterRequestList(vec![
-                v4::OptionCode::SubnetMask,
-                v4::OptionCode::Router,
-                v4::OptionCode::DomainNameServer,
-                v4::OptionCode::DomainName,
-            ]));
+            .insert(v4::DhcpOption::ParameterRequestList(self.params.clone()));
+        // insert manually entered opts
+        for opt in &self.opt {
+            msg.opts_mut().insert(opt.clone());
+        }
+        if let Some(ip) = self.sident {
+            msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
+        }
 
         if let Some(ip) = self.sident {
             msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
@@ -408,7 +432,7 @@ impl InformArgs {
     }
 }
 
-#[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
+#[derive(FromArgs, PartialEq, Debug, Clone)]
 /// Sends Discover & Request msgs if we get good responses from the server
 #[argh(subcommand, name = "dora")]
 pub struct DoraArgs {
@@ -433,6 +457,13 @@ pub struct DoraArgs {
     /// relay link select opt 82 subopt 5 [default: None]
     #[argh(option)]
     pub relay_link: Option<Ipv4Addr>,
+    /// add opts to the message
+    /// [ex: these are equivalent- "118,hex,C0A80001" or "118,ip,192.168.0.1"]
+    #[argh(option, short = 'o', from_str_fn(parse_opts))]
+    pub opt: Vec<v4::DhcpOption>,
+    /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
+    #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
+    pub params: Vec<v4::OptionCode>,
 }
 
 #[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
