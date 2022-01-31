@@ -141,7 +141,8 @@ pub struct DiscoverArgs {
     /// relay link select opt 82 subopt 5 [default: None]
     #[argh(option)]
     pub relay_link: Option<Ipv4Addr>,
-    /// add opts to the message [ex: for hex "118,hex,C0A80001" for an IP "118,ip,192.168.0.1"]
+    /// add opts to the message
+    /// [ex: these are equivalent, "118,hex,C0A80001" or "118,ip,192.168.0.1"]
     #[argh(option, short = 'o', from_str_fn(parse_opts))]
     pub opts: Vec<v4::DhcpOption>,
     /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
@@ -167,14 +168,13 @@ impl DiscoverArgs {
         msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
             self.chaddr.bytes().to_vec(),
         ));
+        // insert parse params
         msg.opts_mut()
-            .insert(v4::DhcpOption::ParameterRequestList(vec![
-                v4::OptionCode::SubnetMask,
-                v4::OptionCode::Router,
-                v4::OptionCode::DomainNameServer,
-                v4::OptionCode::DomainName,
-            ]));
-        // TODO: add more?
+            .insert(v4::DhcpOption::ParameterRequestList(self.params.clone()));
+        // insert manually entered opts
+        for opt in &self.opts {
+            msg.opts_mut().insert(opt.clone());
+        }
         // add requested ip
         if let Some(ip) = self.req_addr {
             msg.opts_mut()
