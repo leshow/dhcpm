@@ -47,7 +47,7 @@ impl Runner {
                 recv(rx) -> res => {
                     match res {
                         Ok(Msg::V4(msg)) => {
-                            info!(msg_type = ?msg.opts().msg_type().unwrap(), msg = %PrettyPrint(msg), "decoded");
+                            info!(msg_type = ?msg.opts().msg_type().unwrap(), msg = %PrettyPrint(PrettyMsg(&msg)), "decoded");
                             break;
                         }
                         Ok(Msg::V6(msg)) => {
@@ -131,7 +131,7 @@ fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
         }
         IpAddr::V6(addr) => (IpAddr::V6(addr), args.port.unwrap()).into(),
     };
-    let msg = match args.msg {
+    let msg = match &args.msg {
         // dhcpv4
         MsgType::Discover(args) => args.build(broadcast),
         MsgType::Request(args) => args.build(broadcast),
@@ -141,7 +141,7 @@ fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
         MsgType::Solicit(_) => todo!("solicit unimplemented at the moment"),
     };
 
-    info!(msg_type = ?msg.opts().msg_type().unwrap(), ?target, msg = %PrettyPrint(&msg), "sending msg");
+    info!(msg_type = ?msg.opts().msg_type().unwrap(), ?target, msg = %PrettyPrint(PrettyMsg(&msg)), "sending msg");
 
     send.send_to(&msg.to_vec()?[..], target)?;
     Ok(())
@@ -169,4 +169,30 @@ impl<T: fmt::Debug> fmt::Display for PrettyPrint<T> {
 pub enum Msg {
     V4(v4::Message),
     V6(v6::Message),
+}
+
+#[derive(Clone)]
+struct PrettyMsg<'a>(&'a v4::Message);
+
+impl<'a> fmt::Debug for PrettyMsg<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("v4::Message")
+            .field("opcode", &self.0.opcode())
+            .field("htype", &self.0.htype())
+            .field("hlen", &self.0.hlen())
+            .field("hops", &self.0.hops())
+            .field("xid", &self.0.xid())
+            .field("secs", &self.0.secs())
+            .field("flags", &self.0.flags())
+            .field("ciaddr", &self.0.ciaddr())
+            .field("yiaddr", &self.0.yiaddr())
+            .field("siaddr", &self.0.siaddr())
+            .field("giaddr", &self.0.giaddr())
+            .field("chaddr", &hex::encode(self.0.chaddr()))
+            .field("sname", &self.0.sname())
+            .field("fname", &self.0.fname())
+            // .field("magic", &String::from_utf8_lossy(self.magic()))
+            .field("opts", &self.0.opts())
+            .finish()
+    }
 }

@@ -8,27 +8,22 @@
 #![deny(broken_intra_doc_links)]
 #![allow(clippy::cognitive_complexity)]
 
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    str::FromStr,
-};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::Result;
 use argh::FromArgs;
 use crossbeam_channel::Receiver;
 use dhcproto::v4;
 use mac_address::MacAddress;
+use opts::LogStructure;
 use tracing::{error, trace};
-use tracing_subscriber::{
-    fmt::{self, format::Pretty},
-    prelude::__tracing_subscriber_SubscriberExt,
-    util::SubscriberInitExt,
-    EnvFilter,
-};
 
+mod opts;
 mod runner;
+use opts::{parse_opts, parse_params};
 use runner::Runner;
 
+#[allow(clippy::collapsible_else_if)]
 fn main() -> Result<()> {
     let mut args: Args = argh::from_env();
 
@@ -59,7 +54,7 @@ fn main() -> Result<()> {
         }
     }
 
-    init_tracing(&args);
+    opts::init_tracing(&args);
     trace!("{:?}", args);
     let shutdown_rx = ctrl_channel()?;
     let mut runner = Runner { args, shutdown_rx };
@@ -80,42 +75,14 @@ fn ctrl_channel() -> Result<Receiver<()>> {
     Ok(receiver)
 }
 
-fn init_tracing(args: &Args) {
-    let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
-        .unwrap();
-    match args.output {
-        LogStructure::Pretty => {
-            tracing_subscriber::registry()
-                .with(filter_layer)
-                .with(
-                    fmt::layer()
-                        .fmt_fields(Pretty::with_source_location(Pretty::default(), false))
-                        .with_target(false),
-                )
-                .init();
-        }
-        LogStructure::Debug => {
-            tracing_subscriber::registry()
-                .with(filter_layer)
-                .with(fmt::layer().fmt_fields(Pretty::default()))
-                .init();
-        }
-        LogStructure::Json => {
-            tracing_subscriber::registry()
-                .with(filter_layer)
-                .with(fmt::layer().json())
-                .init();
-        }
-    }
-}
-
 #[derive(Debug, FromArgs, Clone, PartialEq)]
 #[argh(description = "dhcpm is a cli tool for sending dhcpv4/v6 messages
 
 ex  dhcpv4:
         dhcpm 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
         dhcpm 255.255.255.255 discover (broadcast discover to default dhcp port)
+        dhcpm 192.168.0.1 dora (unicast DORA to 192.168.0.1)
+        dhcpm 192.168.0.1 dora -o 118,C0A80001 (unicast DORA, incl opt 118:192.168.0.1)
     dhcpv6:
         dhcpm ::0 -p 9901 solicit       (unicast solicit to [::0]:9901)
         dhcpm ff02::1:2 solicit         (multicast solicit to default port)
@@ -134,29 +101,30 @@ pub struct Args {
     #[argh(option, short = 'p')]
     pub port: Option<u16>,
     /// query timeout in seconds [default: 3]
-    #[argh(option, short = 't', default = "default_timeout()")]
+    #[argh(option, short = 't', default = "opts::default_timeout()")]
     pub timeout: u64,
     /// select the log output format
     #[argh(option, default = "LogStructure::Pretty")]
     pub output: LogStructure,
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, FromArgs)]
+#[derive(PartialEq, Debug, Clone, FromArgs)]
 #[argh(subcommand)]
 pub enum MsgType {
     Discover(DiscoverArgs),
     Request(RequestArgs),
     Release(ReleaseArgs),
     Inform(InformArgs),
+    // Dora(DoraArgs),
     Solicit(SolicitArgs),
 }
 
-#[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
+#[derive(FromArgs, PartialEq, Debug, Clone)]
 /// Send a DISCOVER msg
 #[argh(subcommand, name = "discover")]
 pub struct DiscoverArgs {
     /// supply a mac address for DHCPv4 [default: first avail mac]
-    #[argh(option, short = 'c', default = "get_mac()")]
+    #[argh(option, short = 'c', default = "opts::get_mac()")]
     pub chaddr: MacAddress,
     /// address of client [default: None]
     #[argh(option, default = "Ipv4Addr::UNSPECIFIED")]
@@ -173,10 +141,16 @@ pub struct DiscoverArgs {
     /// relay link select opt 82 subopt 5 [default: None]
     #[argh(option)]
     pub relay_link: Option<Ipv4Addr>,
+    /// add opts to the message [ex: for hex "118,hex,C0A80001" for an IP "118,ip,192.168.0.1"]
+    #[argh(option, short = 'o', from_str_fn(parse_opts))]
+    pub opts: Vec<v4::DhcpOption>,
+    /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
+    #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
+    pub params: Vec<v4::OptionCode>,
 }
 
 impl DiscoverArgs {
-    fn build(self, broadcast: bool) -> v4::Message {
+    fn build(&self, broadcast: bool) -> v4::Message {
         let mut msg = v4::Message::new(
             self.ciaddr,
             Ipv4Addr::UNSPECIFIED,
@@ -225,7 +199,7 @@ impl DiscoverArgs {
 #[argh(subcommand, name = "request")]
 pub struct RequestArgs {
     /// supply a mac address for DHCPv4 [default: first avail mac]
-    #[argh(option, short = 'c', default = "get_mac()")]
+    #[argh(option, short = 'c', default = "opts::get_mac()")]
     pub chaddr: MacAddress,
     /// address for client [default: None]
     #[argh(option, short = 'y', default = "Ipv4Addr::UNSPECIFIED")]
@@ -304,7 +278,7 @@ impl RequestArgs {
 #[argh(subcommand, name = "release")]
 pub struct ReleaseArgs {
     /// supply a mac address for DHCPv4 [default: first avail mac]
-    #[argh(option, short = 'c', default = "get_mac()")]
+    #[argh(option, short = 'c', default = "opts::get_mac()")]
     pub chaddr: MacAddress,
     /// giaddr [default: 0.0.0.0]
     #[argh(option, short = 'g', default = "Ipv4Addr::UNSPECIFIED")]
@@ -372,7 +346,7 @@ impl ReleaseArgs {
 #[argh(subcommand, name = "inform")]
 pub struct InformArgs {
     /// supply a mac address for DHCPv4 [default: first avail mac]
-    #[argh(option, short = 'c', default = "get_mac()")]
+    #[argh(option, short = 'c', default = "opts::get_mac()")]
     pub chaddr: MacAddress,
     /// address for client [default: 0.0.0.0]
     #[argh(option, short = 'y', default = "Ipv4Addr::UNSPECIFIED")]
@@ -435,38 +409,33 @@ impl InformArgs {
 }
 
 #[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
+/// Sends Discover & Request msgs if we get good responses from the server
+#[argh(subcommand, name = "dora")]
+pub struct DoraArgs {
+    /// supply a mac address for DHCPv4 [default: first avail mac]
+    #[argh(option, short = 'c', default = "opts::get_mac()")]
+    pub chaddr: MacAddress,
+    /// address of client [default: None]
+    #[argh(option, default = "Ipv4Addr::UNSPECIFIED")]
+    pub ciaddr: Ipv4Addr,
+    /// address for client [default: 0.0.0.0]
+    #[argh(option, short = 'y', default = "Ipv4Addr::UNSPECIFIED")]
+    pub yiaddr: Ipv4Addr,
+    /// request specific ip [default: None]
+    #[argh(option, short = 'r')]
+    pub req_addr: Option<Ipv4Addr>,
+    /// giaddr [default: 0.0.0.0]
+    #[argh(option, short = 'g', default = "Ipv4Addr::UNSPECIFIED")]
+    pub giaddr: Ipv4Addr,
+    /// subnet selection opt 118 [default: None]
+    #[argh(option)]
+    pub subnet_select: Option<Ipv4Addr>,
+    /// relay link select opt 82 subopt 5 [default: None]
+    #[argh(option)]
+    pub relay_link: Option<Ipv4Addr>,
+}
+
+#[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
 /// Send a SOLICIT msg
 #[argh(subcommand, name = "solicit")]
 pub struct SolicitArgs {}
-
-fn default_timeout() -> u64 {
-    3
-}
-
-fn get_mac() -> MacAddress {
-    mac_address::get_mac_address()
-        .expect("unable to get MAC addr")
-        .unwrap()
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub enum LogStructure {
-    Debug,
-    Pretty,
-    Json,
-}
-
-impl FromStr for LogStructure {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match &s.to_ascii_lowercase()[..] {
-            "json" => Ok(LogStructure::Json),
-            "pretty" => Ok(LogStructure::Pretty),
-            "debug" => Ok(LogStructure::Debug),
-            _ => Err(anyhow!(
-                "unknown log structure type: {:?} must be \"json\" or \"compact\" or \"pretty\"",
-                s
-            )),
-        }
-    }
-}
