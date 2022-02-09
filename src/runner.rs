@@ -18,6 +18,8 @@ use dhcproto::{
 
 use crate::{Args, MsgType};
 
+const MAX_RETRIES: usize = 3;
+
 #[derive(Debug)]
 pub struct Runner {
     pub args: Args,
@@ -42,18 +44,13 @@ impl Runner {
 
         retry_tx.send(()).expect("retry channel send failed");
         let mut count = 0;
-        while count < 3 {
+        while count < MAX_RETRIES {
             select! {
                 recv(rx) -> res => {
                     match res {
-                        Ok(Msg::V4(msg)) => {
-                            info!(msg_type = ?msg.opts().msg_type().unwrap(), msg = %PrettyPrint(PrettyMsg(&msg)), "decoded");
+                        Ok(msg) => {
+                            info!(msg_type = ?msg.get_type(), msg = %PrettyPrint(PrettyMsg(&msg)), "decoded");
                             break;
-                        }
-                        Ok(Msg::V6(msg)) => {
-                            info!(msg_type = ?msg.msg_type(), msg = %PrettyPrint(msg), "decoded");
-                            break;
-
                         }
                         Err(err) => {
                             error!(?err, "channel returned error");
@@ -78,15 +75,84 @@ impl Runner {
         Ok(())
     }
 
+    // unfinished
+    pub fn dora(&mut self) -> Result<()> {
+        let start = Instant::now();
+        let bind_addr: SocketAddr = self.args.bind.unwrap();
+        let send = Arc::new(UdpSocket::bind(bind_addr)?);
+        let recv = Arc::clone(&send);
+
+        // this channel is for receiving a decoded v4/v6 message
+        let (tx, rx) = bounded(1);
+        // this is for controlling when we send so we're able to retry
+        let (retry_tx, retry_rx) = bounded(1);
+        self.recv(tx, recv);
+        // self.retry_send(retry_rx, send);
+
+        let timeout = tick(Duration::from_secs(self.args.timeout));
+
+        retry_tx.send(()).expect("retry channel send failed");
+        let mut count = 0;
+        while count < MAX_RETRIES {
+            select! {
+                recv(rx) -> res => {
+                    match res {
+                        Ok(msg) => {
+                            info!(msg_type = ?msg.get_type(), msg = %PrettyPrint(PrettyMsg(&msg)), "decoded");
+                            break;
+                        }
+                        Err(err) => {
+                            error!(?err, "channel returned error");
+                            break;
+                        }
+                    }
+                }
+                recv(self.shutdown_rx) -> _ => {
+                    trace!("shutdown signal received");
+                    break;
+                }
+                recv(timeout) -> _ => {
+                    trace!(elapsed = %PrettyDuration(start.elapsed()), "received timeout-- retrying");
+                    count += 1;
+                    retry_tx.send(()).expect("retry channel send failed");
+                    continue;
+                }
+            }
+        }
+        drop(retry_tx);
+
+        Ok(())
+    }
+    fn retry_send(
+        &self,
+        retry_rx: Receiver<()>,
+        send: Arc<UdpSocket>,
+        (msg, target): (Msg, SocketAddr),
+    ) {
+        thread::spawn(move || {
+            while retry_rx.recv().is_ok() {
+                info!(msg_type = ?msg.get_type(), ?target, msg = %PrettyPrint(PrettyMsg(&msg)), "sending msg");
+                send.send_to(&msg.to_vec()?[..], target)?;
+            }
+
+            Ok::<_, anyhow::Error>(())
+        });
+    }
+
     fn send(&self, retry_rx: Receiver<()>, send: Arc<UdpSocket>) {
         let args = self.args.clone();
         thread::spawn(move || {
+            let mut count = 0;
             while retry_rx.recv().is_ok() {
                 if let Err(err) = try_send(&args, &send) {
                     error!(?err, "error sending");
                 }
+                count += 1;
             }
-            error!("max retries-- exiting");
+
+            if count >= MAX_RETRIES {
+                error!("max retries-- exiting");
+            }
             Ok::<_, anyhow::Error>(())
         });
     }
@@ -117,34 +183,40 @@ fn try_recv(args: &Args, tx: &Sender<Msg>, recv: &Arc<UdpSocket>) -> Result<()> 
 }
 
 fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
-    let mut broadcast = false;
-    let target: SocketAddr = match args.target {
+    let (msg, target) = build_msg(args, send)?;
+    send.send_to(&msg.to_vec()?[..], target)?;
+    Ok(())
+}
+
+fn set_broadcast(args: &Args, send: &Arc<UdpSocket>) -> Result<(SocketAddr, bool)> {
+    Ok(match args.target {
         IpAddr::V4(addr) if addr.is_broadcast() => {
             send.set_broadcast(true)?;
-            broadcast = true;
-            (args.target, args.port.unwrap()).into()
+            ((args.target, args.port.unwrap()).into(), true)
         }
-        IpAddr::V4(addr) => (addr, args.port.unwrap()).into(),
+        IpAddr::V4(addr) => ((addr, args.port.unwrap()).into(), false),
         IpAddr::V6(addr) if addr.is_multicast() => {
             send.join_multicast_v6(&addr, 0)?;
-            (addr, args.port.unwrap()).into()
+            ((addr, args.port.unwrap()).into(), false)
         }
-        IpAddr::V6(addr) => (IpAddr::V6(addr), args.port.unwrap()).into(),
-    };
+        IpAddr::V6(addr) => ((IpAddr::V6(addr), args.port.unwrap()).into(), false),
+    })
+}
+
+fn build_msg(args: &Args, send: &Arc<UdpSocket>) -> Result<(Msg, SocketAddr)> {
+    let (target, broadcast) = set_broadcast(args, send)?;
     let msg = match &args.msg {
         // dhcpv4
-        MsgType::Discover(args) => args.build(broadcast),
-        MsgType::Request(args) => args.build(broadcast),
-        MsgType::Release(args) => args.build(),
-        MsgType::Inform(args) => args.build(),
+        MsgType::Discover(args) => Msg::V4(args.build(broadcast)),
+        MsgType::Request(args) => Msg::V4(args.build(broadcast)),
+        MsgType::Release(args) => Msg::V4(args.build()),
+        MsgType::Inform(args) => Msg::V4(args.build()),
         // dhcpv6
         MsgType::Solicit(_) => todo!("solicit unimplemented at the moment"),
     };
+    info!(msg_type = ?msg.get_type(), ?target, msg = %PrettyPrint(PrettyMsg(&msg)), "sending msg");
 
-    info!(msg_type = ?msg.opts().msg_type().unwrap(), ?target, msg = %PrettyPrint(PrettyMsg(&msg)), "sending msg");
-
-    send.send_to(&msg.to_vec()?[..], target)?;
-    Ok(())
+    Ok((msg, target))
 }
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -171,28 +243,52 @@ pub enum Msg {
     V6(v6::Message),
 }
 
+impl Msg {
+    fn get_type(&self) -> String {
+        match self {
+            Msg::V4(m) => format!("{:?}", m.opts().msg_type().unwrap()),
+            Msg::V6(m) => format!("{:?}", m.opts()),
+        }
+    }
+
+    pub fn to_vec(&self) -> Result<Vec<u8>> {
+        Ok(match self {
+            Msg::V4(m) => m.to_vec()?,
+            Msg::V6(m) => m.to_vec()?,
+        })
+    }
+}
+
 #[derive(Clone)]
-struct PrettyMsg<'a>(&'a v4::Message);
+struct PrettyMsg<'a>(&'a Msg);
 
 impl<'a> fmt::Debug for PrettyMsg<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("v4::Message")
-            .field("opcode", &self.0.opcode())
-            .field("htype", &self.0.htype())
-            .field("hlen", &self.0.hlen())
-            .field("hops", &self.0.hops())
-            .field("xid", &self.0.xid())
-            .field("secs", &self.0.secs())
-            .field("flags", &self.0.flags())
-            .field("ciaddr", &self.0.ciaddr())
-            .field("yiaddr", &self.0.yiaddr())
-            .field("siaddr", &self.0.siaddr())
-            .field("giaddr", &self.0.giaddr())
-            .field("chaddr", &hex::encode(self.0.chaddr()))
-            .field("sname", &self.0.sname())
-            .field("fname", &self.0.fname())
-            // .field("magic", &String::from_utf8_lossy(self.magic()))
-            .field("opts", &self.0.opts())
-            .finish()
+        match self.0 {
+            Msg::V4(msg) => {
+                f.debug_struct("v4::Message")
+                    .field("opcode", &msg.opcode())
+                    .field("htype", &msg.htype())
+                    .field("hlen", &msg.hlen())
+                    .field("hops", &msg.hops())
+                    .field("xid", &msg.xid())
+                    .field("secs", &msg.secs())
+                    .field("flags", &msg.flags())
+                    .field("ciaddr", &msg.ciaddr())
+                    .field("yiaddr", &msg.yiaddr())
+                    .field("siaddr", &msg.siaddr())
+                    .field("giaddr", &msg.giaddr())
+                    .field("chaddr", &hex::encode(msg.chaddr()))
+                    .field("sname", &msg.sname())
+                    .field("fname", &msg.fname())
+                    // .field("magic", &String::from_utf8_lossy(self.magic()))
+                    .field("opts", &msg.opts())
+                    .finish()
+            }
+            Msg::V6(_msg) => {
+                // unfinished
+                todo!("unfinished")
+            }
+        }
     }
 }

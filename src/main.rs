@@ -445,6 +445,9 @@ pub struct DoraArgs {
     /// address for client [default: 0.0.0.0]
     #[argh(option, short = 'y', default = "Ipv4Addr::UNSPECIFIED")]
     pub yiaddr: Ipv4Addr,
+    /// server identifier [default: None]
+    #[argh(option, short = 's')]
+    pub sident: Option<Ipv4Addr>,
     /// request specific ip [default: None]
     #[argh(option, short = 'r')]
     pub req_addr: Option<Ipv4Addr>,
@@ -464,6 +467,38 @@ pub struct DoraArgs {
     /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
     #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
     pub params: Vec<v4::OptionCode>,
+}
+
+impl DoraArgs {
+    pub fn discover(&self, broadcast: bool) -> v4::Message {
+        let new_args = DiscoverArgs {
+            chaddr: self.chaddr,
+            ciaddr: self.ciaddr,
+            req_addr: self.req_addr,
+            giaddr: self.giaddr,
+            subnet_select: self.subnet_select,
+            relay_link: self.relay_link,
+            opt: self.opt.clone(),
+            params: self.params.clone(),
+        };
+        new_args.build(broadcast)
+    }
+    pub fn request(&self, broadcast: bool, req_addr: Ipv4Addr) -> v4::Message {
+        let new_args = RequestArgs {
+            chaddr: self.chaddr,
+            ciaddr: self.ciaddr,
+            yiaddr: self.yiaddr,
+            // insert the IP we got back in OFFER
+            req_addr: Some(req_addr),
+            sident: self.sident,
+            giaddr: self.giaddr,
+            subnet_select: self.subnet_select,
+            relay_link: self.relay_link,
+            opt: self.opt.clone(),
+            params: self.params.clone(),
+        };
+        new_args.build(broadcast)
+    }
 }
 
 #[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
