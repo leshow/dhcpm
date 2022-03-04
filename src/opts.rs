@@ -3,6 +3,7 @@ use std::{net::Ipv4Addr, str::FromStr};
 use anyhow::{anyhow, Error, Result};
 use dhcproto::{v4, Decodable, Decoder, Encoder};
 use mac_address::MacAddress;
+use tracing::trace;
 use tracing_subscriber::{
     fmt::{self, format::Pretty},
     prelude::__tracing_subscriber_SubscriberExt,
@@ -87,7 +88,10 @@ pub fn parse_opts(input: &str) -> Result<v4::DhcpOption, String> {
                     .to_vec()),
                 _ => Err("failed to decode with a type we understand \"hex\" or \"ip\""),
             }?;
-            Ok(write_opt(code, opt).map_err(|_| "failed to encode to DhcpOption")?)
+            Ok(write_opt(code, opt).map_err(|e| {
+                println!("{e}");
+                "failed to encode to DhcpOption"
+            })?)
         }
         _ => Err("parsing options failed".to_string()),
     }
