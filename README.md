@@ -1,6 +1,6 @@
 # dhcpm
 
-A cli tool for constructing & sending dhcp client messages, without actually binding on an interface. Aims to support v4 & v6, though v6 support is unfinished. Allows sending dhcp messages to arbitrary ports and ips.
+A cli tool for constructing & sending mocked dhcp client messages. `dhcpm` won't actually mess with the IP assigned to your network interfaces, it is only intended to mock messages to test dhcp servers. Aims to support v4 & v6, though v6 support is unfinished. Allows sending dhcp messages to arbitrary ports and ips.
 
 ## Sponsor
 
@@ -18,9 +18,14 @@ dhcpm is a cli tool for sending dhcpv4/v6 messages
 ex  dhcpv4:
         dhcpm 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
         dhcpm 255.255.255.255 discover (broadcast discover to default dhcp port)
+        dhcpm 192.168.0.1 dora (unicast DORA to 192.168.0.1)
+        dhcpm 192.168.0.1 dora -o 118,C0A80001 (unicast DORA, incl opt 118:192.168.0.1)
     dhcpv6:
         dhcpm ::0 -p 9901 solicit       (unicast solicit to [::0]:9901)
         dhcpm ff02::1:2 solicit         (multicast solicit to default port)
+
+Positional Arguments:
+  target            ip address to send to
 
 Options:
   -b, --bind        address to bind to [default: INADDR_ANY:0]
@@ -33,7 +38,9 @@ Commands:
   discover          Send a DISCOVER msg
   request           Send a REQUEST msg
   release           Send a RELEASE msg
-  solicit           Send a SOLICIT msg
+  inform            Send a INFORM msg
+  dora              Sends Discover then Request
+  solicit           Send a SOLICIT msg (dhcpv6)
 ```
 
 ### Sending DHCP over arbitrary ports 

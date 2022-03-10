@@ -382,9 +382,6 @@ impl ReleaseArgs {
         for opt in &self.opt {
             msg.opts_mut().insert(opt.clone());
         }
-        if let Some(ip) = self.sident {
-            msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
-        }
 
         if let Some(ip) = self.sident {
             msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
@@ -405,7 +402,7 @@ impl ReleaseArgs {
 }
 
 #[derive(FromArgs, PartialEq, Debug, Clone)]
-/// Send a INFORM msg
+/// Send an INFORM msg
 #[argh(subcommand, name = "inform")]
 pub struct InformArgs {
     /// supply a mac address for DHCPv4 [default: first avail mac]
@@ -448,9 +445,8 @@ impl InformArgs {
             &self.chaddr.bytes(),
         );
 
-        // TODO use Inform
         msg.opts_mut()
-            .insert(v4::DhcpOption::MessageType(v4::MessageType::Unknown(8)));
+            .insert(v4::DhcpOption::MessageType(v4::MessageType::Inform));
         msg.opts_mut().insert(v4::DhcpOption::ClientIdentifier(
             self.chaddr.bytes().to_vec(),
         ));
@@ -460,10 +456,6 @@ impl InformArgs {
         for opt in &self.opt {
             msg.opts_mut().insert(opt.clone());
         }
-        if let Some(ip) = self.sident {
-            msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
-        }
-
         if let Some(ip) = self.sident {
             msg.opts_mut().insert(v4::DhcpOption::ServerIdentifier(ip));
         }
@@ -481,7 +473,7 @@ impl InformArgs {
 }
 
 #[derive(FromArgs, PartialEq, Debug, Clone)]
-/// Sends Discover & Request msgs if we get good responses from the server
+/// Sends Discover then Request
 #[argh(subcommand, name = "dora")]
 pub struct DoraArgs {
     /// supply a mac address for DHCPv4 [default: first avail mac]
@@ -548,6 +540,6 @@ impl DoraArgs {
 }
 
 #[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
-/// Send a SOLICIT msg
+/// Send a SOLICIT msg (dhcpv6)
 #[argh(subcommand, name = "solicit")]
 pub struct SolicitArgs {}
