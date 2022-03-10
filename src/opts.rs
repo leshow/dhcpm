@@ -3,7 +3,6 @@ use std::{net::Ipv4Addr, str::FromStr};
 use anyhow::{anyhow, Error, Result};
 use dhcproto::{v4, Decodable, Decoder, Encoder};
 use mac_address::MacAddress;
-use tracing::trace;
 use tracing_subscriber::{
     fmt::{self, format::Pretty},
     prelude::__tracing_subscriber_SubscriberExt,

@@ -8,7 +8,10 @@
 #![deny(broken_intra_doc_links)]
 #![allow(clippy::cognitive_complexity)]
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
+    sync::Arc,
+};
 
 use anyhow::Result;
 use argh::FromArgs;
@@ -22,6 +25,8 @@ mod opts;
 mod runner;
 use opts::{parse_opts, parse_params};
 use runner::Runner;
+
+use crate::runner::Msg;
 
 #[allow(clippy::collapsible_else_if)]
 fn main() -> Result<()> {
@@ -56,11 +61,54 @@ fn main() -> Result<()> {
 
     opts::init_tracing(&args);
     trace!("{:?}", args);
+
     let shutdown_rx = ctrl_channel()?;
-    let mut runner = Runner { args, shutdown_rx };
-    if let Err(err) = runner.run() {
-        error!(%err, "encountered error");
-        return Err(err);
+    let bind_addr: SocketAddr = args.bind.unwrap();
+    let soc = Arc::new(UdpSocket::bind(bind_addr)?);
+
+    let mut args_clone = args.clone();
+
+    #[allow(clippy::single_match)]
+    match args.msg {
+        MsgType::Dora(dora) => {
+            args.msg = MsgType::Discover(dora.discover());
+        }
+        _ => (),
+    };
+
+    let mut runner = Runner {
+        args,
+        shutdown_rx: shutdown_rx.clone(),
+        soc: soc.clone(),
+    };
+    match runner.run() {
+        Err(err) => {
+            error!(%err, "encountered error");
+            return Err(err);
+        }
+        // TODO: this is kinda messy
+        Ok(msg) => {
+            drop(runner);
+            #[allow(clippy::single_match)]
+            match (&args_clone.msg, msg) {
+                (MsgType::Dora(dora), Msg::V4(msg)) => {
+                    args_clone.msg = MsgType::Request(dora.request(msg.yiaddr()));
+                }
+                // exit if we were just meant to send 1 message
+                _ => return Ok(()),
+            };
+
+            let mut runner = Runner {
+                args: args_clone,
+                shutdown_rx,
+                soc,
+            };
+            if let Err(err) = runner.run() {
+                error!(%err, "encountered error");
+                return Err(err);
+            }
+            drop(runner);
+        }
     }
 
     Ok(())
@@ -115,7 +163,7 @@ pub enum MsgType {
     Request(RequestArgs),
     Release(ReleaseArgs),
     Inform(InformArgs),
-    // Dora(DoraArgs),
+    Dora(DoraArgs),
     Solicit(SolicitArgs),
 }
 
@@ -470,8 +518,8 @@ pub struct DoraArgs {
 }
 
 impl DoraArgs {
-    pub fn discover(&self, broadcast: bool) -> v4::Message {
-        let new_args = DiscoverArgs {
+    pub fn discover(&self) -> DiscoverArgs {
+        DiscoverArgs {
             chaddr: self.chaddr,
             ciaddr: self.ciaddr,
             req_addr: self.req_addr,
@@ -480,11 +528,10 @@ impl DoraArgs {
             relay_link: self.relay_link,
             opt: self.opt.clone(),
             params: self.params.clone(),
-        };
-        new_args.build(broadcast)
+        }
     }
-    pub fn request(&self, broadcast: bool, req_addr: Ipv4Addr) -> v4::Message {
-        let new_args = RequestArgs {
+    pub fn request(&self, req_addr: Ipv4Addr) -> RequestArgs {
+        RequestArgs {
             chaddr: self.chaddr,
             ciaddr: self.ciaddr,
             yiaddr: self.yiaddr,
@@ -496,8 +543,7 @@ impl DoraArgs {
             relay_link: self.relay_link,
             opt: self.opt.clone(),
             params: self.params.clone(),
-        };
-        new_args.build(broadcast)
+        }
     }
 }
 

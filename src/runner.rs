@@ -24,33 +24,28 @@ const MAX_RETRIES: usize = 3;
 pub struct Runner {
     pub args: Args,
     pub shutdown_rx: Receiver<()>,
+    pub soc: Arc<UdpSocket>,
 }
 
 impl Runner {
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> Result<Msg> {
         let start = Instant::now();
-        let bind_addr: SocketAddr = self.args.bind.unwrap();
-        let send = Arc::new(UdpSocket::bind(bind_addr)?);
-        let recv = Arc::clone(&send);
 
-        // this channel is for receiving a decoded v4/v6 message
-        let (tx, rx) = bounded(1);
-        // this is for controlling when we send so we're able to retry
-        let (retry_tx, retry_rx) = bounded(1);
-        self.recv(tx, recv);
-        self.send(retry_rx, send);
-
+        let (mut sender, rx) = SingleMessage::new(&self.args, self.soc.clone())?;
         let timeout = tick(Duration::from_secs(self.args.timeout));
 
-        retry_tx.send(()).expect("retry channel send failed");
+        // do send and wait for recv
+        sender.run();
+
         let mut count = 0;
         while count < MAX_RETRIES {
             select! {
+                // we will recv on this channel
                 recv(rx) -> res => {
                     match res {
                         Ok(msg) => {
                             info!(msg_type = ?msg.get_type(), msg = %PrettyPrint(PrettyMsg(&msg)), "decoded");
-                            break;
+                            return Ok(msg);
                         }
                         Err(err) => {
                             error!(?err, "channel returned error");
@@ -58,113 +53,23 @@ impl Runner {
                         }
                     }
                 }
+                // or recv a shutdown
                 recv(self.shutdown_rx) -> _ => {
                     trace!("shutdown signal received");
                     break;
                 }
+                // or eventually time out
                 recv(timeout) -> _ => {
                     trace!(elapsed = %PrettyDuration(start.elapsed()), "received timeout-- retrying");
                     count += 1;
-                    retry_tx.send(()).expect("retry channel send failed");
+                    sender.retry();
                     continue;
                 }
             }
         }
-        drop(retry_tx);
+        drop(sender); // drop retry_tx
 
-        Ok(())
-    }
-
-    // unfinished
-    pub fn dora(&mut self) -> Result<()> {
-        let start = Instant::now();
-        let bind_addr: SocketAddr = self.args.bind.unwrap();
-        let send = Arc::new(UdpSocket::bind(bind_addr)?);
-        let recv = Arc::clone(&send);
-
-        // this channel is for receiving a decoded v4/v6 message
-        let (tx, rx) = bounded(1);
-        // this is for controlling when we send so we're able to retry
-        let (retry_tx, retry_rx) = bounded(1);
-        self.recv(tx, recv);
-        // self.retry_send(retry_rx, send);
-
-        let timeout = tick(Duration::from_secs(self.args.timeout));
-
-        retry_tx.send(()).expect("retry channel send failed");
-        let mut count = 0;
-        while count < MAX_RETRIES {
-            select! {
-                recv(rx) -> res => {
-                    match res {
-                        Ok(msg) => {
-                            info!(msg_type = ?msg.get_type(), msg = %PrettyPrint(PrettyMsg(&msg)), "decoded");
-                            break;
-                        }
-                        Err(err) => {
-                            error!(?err, "channel returned error");
-                            break;
-                        }
-                    }
-                }
-                recv(self.shutdown_rx) -> _ => {
-                    trace!("shutdown signal received");
-                    break;
-                }
-                recv(timeout) -> _ => {
-                    trace!(elapsed = %PrettyDuration(start.elapsed()), "received timeout-- retrying");
-                    count += 1;
-                    retry_tx.send(()).expect("retry channel send failed");
-                    continue;
-                }
-            }
-        }
-        drop(retry_tx);
-
-        Ok(())
-    }
-    fn retry_send(
-        &self,
-        retry_rx: Receiver<()>,
-        send: Arc<UdpSocket>,
-        (msg, target): (Msg, SocketAddr),
-    ) {
-        thread::spawn(move || {
-            while retry_rx.recv().is_ok() {
-                info!(msg_type = ?msg.get_type(), ?target, msg = %PrettyPrint(PrettyMsg(&msg)), "sending msg");
-                send.send_to(&msg.to_vec()?[..], target)?;
-            }
-
-            Ok::<_, anyhow::Error>(())
-        });
-    }
-
-    fn send(&self, retry_rx: Receiver<()>, send: Arc<UdpSocket>) {
-        let args = self.args.clone();
-        thread::spawn(move || {
-            let mut count = 0;
-            while retry_rx.recv().is_ok() {
-                if let Err(err) = try_send(&args, &send) {
-                    error!(?err, "error sending");
-                }
-                count += 1;
-            }
-
-            if count >= MAX_RETRIES {
-                error!("max retries-- exiting");
-            }
-            Ok::<_, anyhow::Error>(())
-        });
-    }
-
-    fn recv(&self, tx: Sender<Msg>, recv: Arc<UdpSocket>) {
-        let args = self.args.clone();
-        thread::spawn(move || {
-            if let Err(err) = try_recv(&args, &tx, &recv) {
-                error!(?err, "could not receive");
-            }
-            Ok::<_, anyhow::Error>(())
-        });
+        Err(anyhow::anyhow!("no message received"))
     }
 }
 
@@ -177,8 +82,11 @@ fn try_recv(args: &Args, tx: &Sender<Msg>, recv: &Arc<UdpSocket>) -> Result<()> 
     } else {
         Msg::V4(v4::Message::decode(&mut Decoder::new(&buf[..len]))?)
     };
+    // match wrap {
+    //     Ctrl::Done(_) => tx.send_timeout(Ctrl::Done(msg), Duration::from_secs(1))?,
+    //     Ctrl::Continue(_) => tx.send_timeout(Ctrl::Continue(msg), Duration::from_secs(1))?,
+    // }
     tx.send_timeout(msg, Duration::from_secs(1))?;
-
     Ok(())
 }
 
@@ -211,8 +119,10 @@ fn build_msg(args: &Args, send: &Arc<UdpSocket>) -> Result<(Msg, SocketAddr)> {
         MsgType::Request(args) => Msg::V4(args.build(broadcast)),
         MsgType::Release(args) => Msg::V4(args.build()),
         MsgType::Inform(args) => Msg::V4(args.build()),
+        // should be removed by now
+        MsgType::Dora(_) => panic!("should be removed in main"),
         // dhcpv6
-        MsgType::Solicit(_) => todo!("solicit unimplemented at the moment"),
+        MsgType::Solicit(_) => panic!("solicit unimplemented"),
     };
     info!(msg_type = ?msg.get_type(), ?target, msg = %PrettyPrint(PrettyMsg(&msg)), "sending msg");
 
@@ -291,4 +201,70 @@ impl<'a> fmt::Debug for PrettyMsg<'a> {
             }
         }
     }
+}
+
+#[derive(Debug)]
+pub struct SingleMessage {
+    args: Args,
+    tx: Sender<Msg>,
+    retry_tx: Sender<()>,
+    retry_rx: Receiver<()>,
+    soc: Arc<UdpSocket>,
+}
+
+impl SingleMessage {
+    pub fn new(args: &Args, soc: Arc<UdpSocket>) -> Result<(Self, Receiver<Msg>)> {
+        // this channel is for receiving a decoded v4/v6 message
+        let (tx, rx) = bounded(1);
+        // this is for controlling when we send so we're able to retry
+        let (retry_tx, retry_rx) = bounded(1);
+
+        Ok((
+            Self {
+                tx,
+                retry_rx,
+                retry_tx,
+                soc,
+                args: args.clone(),
+            },
+            rx,
+        ))
+    }
+    pub fn run(&mut self) {
+        send(&self.args, self.retry_rx.clone(), self.soc.clone());
+        recv(&self.args, self.tx.clone(), self.soc.clone());
+        // allow first send to happen
+        self.retry();
+    }
+    pub fn retry(&mut self) {
+        self.retry_tx.send(()).expect("retry channel send failed");
+    }
+}
+
+fn send(args: &Args, retry_rx: Receiver<()>, soc: Arc<UdpSocket>) {
+    let args = args.clone();
+    thread::spawn(move || {
+        let mut count = 0;
+        while retry_rx.recv().is_ok() {
+            if let Err(err) = try_send(&args, &soc) {
+                error!(?err, "error sending");
+            }
+            count += 1;
+        }
+
+        if count >= MAX_RETRIES {
+            error!("max retries-- exiting");
+        }
+        Ok::<_, anyhow::Error>(())
+    });
+}
+
+fn recv(args: &Args, tx: Sender<Msg>, soc: Arc<UdpSocket>) {
+    let args = args.clone();
+    thread::spawn(move || {
+        if let Err(err) = try_recv(&args, &tx, &soc) {
+            error!(?err, "could not receive");
+        }
+        Ok::<_, anyhow::Error>(())
+    });
 }
