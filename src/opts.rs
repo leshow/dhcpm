@@ -88,7 +88,7 @@ pub fn parse_opts(input: &str) -> Result<v4::DhcpOption, String> {
                 _ => Err("failed to decode with a type we understand \"hex\" or \"ip\""),
             }?;
             Ok(write_opt(code, opt).map_err(|e| {
-                println!("{e}");
+                eprintln!("{e}");
                 "failed to encode to DhcpOption"
             })?)
         }
