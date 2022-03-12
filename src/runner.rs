@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::Result;
 use crossbeam_channel::{bounded, select, tick, Receiver, Sender};
-use tracing::{error, info, trace};
+use tracing::{debug, error, info, trace};
 
 use dhcproto::{
     decoder::{Decodable, Decoder},
@@ -16,7 +16,10 @@ use dhcproto::{
     v4, v6,
 };
 
-use crate::{Args, MsgType};
+use crate::{
+    util::{PrettyPrint, PrettyTime},
+    Args, MsgType,
+};
 
 const MAX_RETRIES: usize = 3;
 
@@ -29,14 +32,13 @@ pub struct Runner {
 
 impl Runner {
     pub fn run(&mut self) -> Result<Msg> {
-        let start = Instant::now();
-
+        let total = Instant::now();
+        let mut start = Instant::now();
         let (mut sender, rx) = SingleMessage::new(&self.args, self.soc.clone())?;
         let timeout = tick(Duration::from_secs(self.args.timeout));
 
         // do send and wait for recv
         sender.run();
-
         let mut count = 0;
         while count < MAX_RETRIES {
             select! {
@@ -44,7 +46,7 @@ impl Runner {
                 recv(rx) -> res => {
                     match res {
                         Ok(msg) => {
-                            info!(msg_type = ?msg.get_type(), msg = %PrettyPrint(PrettyMsg(&msg)), "decoded");
+                            info!(msg_type = ?msg.get_type(), elapsed = %PrettyTime(start.elapsed()), msg = %PrettyPrint(PrettyMsg(&msg)),"RECEIVED");
                             return Ok(msg);
                         }
                         Err(err) => {
@@ -60,16 +62,22 @@ impl Runner {
                 }
                 // or eventually time out
                 recv(timeout) -> _ => {
-                    trace!(elapsed = %PrettyDuration(start.elapsed()), "received timeout-- retrying");
+                    debug!(elapsed = %PrettyTime(start.elapsed()), "received timeout-- retrying");
                     count += 1;
                     sender.retry();
+                    start = Instant::now();
                     continue;
                 }
             }
         }
-        drop(sender); // drop retry_tx
+        let SingleMessage { tx, retry_tx, .. } = sender;
+        drop(tx);
+        drop(retry_tx);
 
-        Err(anyhow::anyhow!("no message received"))
+        Err(anyhow::anyhow!(
+            "{} no message received",
+            PrettyTime(total.elapsed())
+        ))
     }
 }
 
@@ -94,6 +102,48 @@ fn try_send(args: &Args, send: &Arc<UdpSocket>) -> Result<()> {
     let (msg, target) = build_msg(args, send)?;
     send.send_to(&msg.to_vec()?[..], target)?;
     Ok(())
+}
+
+fn sender_thread(rx: Receiver<(Msg, SocketAddr)>, soc: Arc<UdpSocket>) {
+    thread::spawn(move || {
+        loop {
+            let (msg, target) = rx.recv()?;
+            let port = target.port();
+
+            // set broadcast appropriately
+            let target: SocketAddr = match target.ip() {
+                IpAddr::V4(addr) if addr.is_broadcast() => {
+                    soc.set_broadcast(true)?;
+                    (target.ip(), port).into()
+                }
+                IpAddr::V4(addr) => (addr, port).into(),
+                IpAddr::V6(addr) if addr.is_multicast() => {
+                    soc.join_multicast_v6(&addr, 0)?;
+                    (addr, port).into()
+                }
+                IpAddr::V6(addr) => (IpAddr::V6(addr), port).into(),
+            };
+            soc.send_to(&msg.to_vec()?[..], target)?;
+        }
+        Ok::<_, anyhow::Error>(())
+    });
+}
+
+fn recv_thread(tx: Sender<(Msg, SocketAddr)>, soc: Arc<UdpSocket>) {
+    thread::spawn(move || {
+        loop {
+            let mut buf = vec![0; 1024];
+            let (len, addr) = soc.recv_from(&mut buf)?;
+            trace!(buf = ?&buf[..len], "recv");
+            let msg = if addr.is_ipv6() {
+                Msg::V6(v6::Message::decode(&mut Decoder::new(&buf[..len]))?)
+            } else {
+                Msg::V4(v4::Message::decode(&mut Decoder::new(&buf[..len]))?)
+            };
+            tx.send_timeout((msg, addr), Duration::from_secs(1))?;
+        }
+        Ok::<_, anyhow::Error>(())
+    });
 }
 
 fn set_broadcast(args: &Args, send: &Arc<UdpSocket>) -> Result<(SocketAddr, bool)> {
@@ -124,27 +174,9 @@ fn build_msg(args: &Args, send: &Arc<UdpSocket>) -> Result<(Msg, SocketAddr)> {
         // dhcpv6
         MsgType::Solicit(_) => panic!("solicit unimplemented"),
     };
-    info!(msg_type = ?msg.get_type(), ?target, msg = %PrettyPrint(PrettyMsg(&msg)), "sending msg");
+    info!(msg_type = ?msg.get_type(), ?target, msg = %PrettyPrint(PrettyMsg(&msg)), "SENT");
 
     Ok((msg, target))
-}
-
-#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
-struct PrettyDuration(Duration);
-
-impl fmt::Display for PrettyDuration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}s", &self.0.as_secs_f32().to_string()[0..=4])
-    }
-}
-
-#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
-struct PrettyPrint<T>(T);
-
-impl<T: fmt::Debug> fmt::Display for PrettyPrint<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#?}", &self.0)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -255,16 +287,19 @@ fn send(args: &Args, retry_rx: Receiver<()>, soc: Arc<UdpSocket>) {
         if count >= MAX_RETRIES {
             error!("max retries-- exiting");
         }
+        trace!("thread dropped send");
         Ok::<_, anyhow::Error>(())
     });
 }
 
+// TODO: need to get this thread to exit
 fn recv(args: &Args, tx: Sender<Msg>, soc: Arc<UdpSocket>) {
     let args = args.clone();
     thread::spawn(move || {
         if let Err(err) = try_recv(&args, &tx, &soc) {
             error!(?err, "could not receive");
         }
+        trace!("thread dropped rec");
         Ok::<_, anyhow::Error>(())
     });
 }

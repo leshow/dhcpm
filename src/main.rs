@@ -10,7 +10,9 @@
 
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
+    path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 
 use anyhow::Result;
@@ -19,7 +21,7 @@ use crossbeam_channel::Receiver;
 use dhcproto::v4;
 use mac_address::MacAddress;
 use opts::LogStructure;
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 
 mod opts;
 mod runner;
@@ -60,58 +62,66 @@ fn main() -> Result<()> {
     }
 
     opts::init_tracing(&args);
-    trace!("{:?}", args);
+    trace!(?args);
 
     let shutdown_rx = ctrl_channel()?;
     let bind_addr: SocketAddr = args.bind.unwrap();
     let soc = Arc::new(UdpSocket::bind(bind_addr)?);
 
-    let mut args_clone = args.clone();
+    let start = Instant::now();
+    // clone new args so we still have the original in case we need to
+    // do a request after
+    let mut new_args = args.clone();
+    let msg = run_it(
+        // just a bit of a hack to change the message type to discover
+        move || {
+            #[allow(clippy::single_match)]
+            match &new_args.msg {
+                MsgType::Dora(dora) => {
+                    new_args.msg = MsgType::Discover(dora.discover());
+                    new_args
+                }
+                _ => new_args,
+            }
+        },
+        soc.clone(),
+        shutdown_rx.clone(),
+    )?;
 
-    #[allow(clippy::single_match)]
-    match args.msg {
-        MsgType::Dora(dora) => {
-            args.msg = MsgType::Discover(dora.discover());
+    // then to request for the next run
+    let new_args = match (&args.msg, msg) {
+        (MsgType::Dora(dora), Msg::V4(msg)) => {
+            let mut new_args = args.clone();
+            new_args.msg = MsgType::Request(dora.request(msg.yiaddr()));
+            new_args
         }
-        _ => (),
+        // exit if we were just meant to send 1 message
+        _ => return Ok(()),
     };
+    run_it(move || new_args, soc, shutdown_rx)?;
+    info!(elapsed = %util::PrettyTime(start.elapsed()), "total time");
 
+    Ok(())
+}
+
+fn run_it<F: FnOnce() -> Args>(
+    f: F,
+    soc: Arc<UdpSocket>,
+    shutdown_rx: Receiver<()>,
+) -> Result<Msg> {
+    let args = f();
     let mut runner = Runner {
         args,
-        shutdown_rx: shutdown_rx.clone(),
-        soc: soc.clone(),
+        shutdown_rx,
+        soc,
     };
     match runner.run() {
         Err(err) => {
-            error!(%err, "encountered error");
-            return Err(err);
+            error!(%err, "got an error");
+            Err(err)
         }
-        // TODO: this is kinda messy
-        Ok(msg) => {
-            drop(runner);
-            #[allow(clippy::single_match)]
-            match (&args_clone.msg, msg) {
-                (MsgType::Dora(dora), Msg::V4(msg)) => {
-                    args_clone.msg = MsgType::Request(dora.request(msg.yiaddr()));
-                }
-                // exit if we were just meant to send 1 message
-                _ => return Ok(()),
-            };
-
-            let mut runner = Runner {
-                args: args_clone,
-                shutdown_rx,
-                soc,
-            };
-            if let Err(err) = runner.run() {
-                error!(%err, "encountered error");
-                return Err(err);
-            }
-            drop(runner);
-        }
+        Ok(msg) => Ok(msg),
     }
-
-    Ok(())
 }
 
 fn ctrl_channel() -> Result<Receiver<()>> {
@@ -154,6 +164,9 @@ pub struct Args {
     /// select the log output format
     #[argh(option, default = "LogStructure::Pretty")]
     pub output: LogStructure,
+    /// pass in a path to a rhai script (https://github.com/rhaiscript/rhai)
+    #[argh(option)]
+    pub script: Option<PathBuf>,
 }
 
 #[derive(PartialEq, Debug, Clone, FromArgs)]
@@ -543,3 +556,37 @@ impl DoraArgs {
 /// Send a SOLICIT msg (dhcpv6)
 #[argh(subcommand, name = "solicit")]
 pub struct SolicitArgs {}
+
+pub mod util {
+    use std::{fmt, time::Duration};
+
+    #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct PrettyTime(pub Duration);
+
+    impl fmt::Display for PrettyTime {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}s", &self.0.as_secs_f32().to_string()[0..=7])
+        }
+    }
+
+    impl fmt::Debug for PrettyTime {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{:?}", self.0)
+        }
+    }
+
+    #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct PrettyPrint<T>(pub T);
+
+    impl<T: fmt::Debug> fmt::Display for PrettyPrint<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{:#?}", &self.0)
+        }
+    }
+
+    impl<T: fmt::Debug> fmt::Debug for PrettyPrint<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{:?}", self.0)
+        }
+    }
+}
