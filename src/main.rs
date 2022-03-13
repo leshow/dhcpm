@@ -91,7 +91,7 @@ fn main() -> Result<()> {
             if let Err(err) = script::main(path) {
                 error!(?err, "error running rhai script");
             }
-            info!("script completed");
+            info!(elapsed = %util::PrettyTime(start.elapsed()), "script completed");
             return Ok(());
         }
     }
