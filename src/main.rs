@@ -17,7 +17,7 @@ use std::{
 
 use anyhow::Result;
 use argh::FromArgs;
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 use dhcproto::v4;
 use mac_address::MacAddress;
 use opts::LogStructure;
@@ -25,6 +25,8 @@ use tracing::{error, info, trace};
 
 mod opts;
 mod runner;
+#[cfg(feature = "rhai")]
+mod script;
 use opts::{parse_opts, parse_params};
 use runner::Runner;
 
@@ -68,37 +70,65 @@ fn main() -> Result<()> {
     let bind_addr: SocketAddr = args.bind.unwrap();
     let soc = Arc::new(UdpSocket::bind(bind_addr)?);
 
+    // messages put on `send_tx` will go out on the socket
+    let (send_tx, send_rx) = crossbeam_channel::bounded(1);
+    // messages put on `recv_tx` were received from the socket
+    let (recv_tx, recv_rx) = crossbeam_channel::bounded(1);
+
+    runner::sender_thread(send_rx, soc.clone());
+    runner::recv_thread(recv_tx, soc);
+
     let start = Instant::now();
+    if let Some(path) = &args.script {
+        #[cfg(not(feature = "rhai"))]
+        return Err(anyhow::anyhow!(
+            "dhcpm must be compiled with \"rhai\" feature to use the script flag"
+        ));
+
+        #[cfg(feature = "rhai")]
+        {
+            info!("evaluating rhai script");
+            if let Err(err) = script::main(path) {
+                error!(?err, "error running rhai script");
+            }
+            info!("script completed");
+            return Ok(());
+        }
+    }
+
     // clone new args so we still have the original in case we need to
     // do a request after
     let mut new_args = args.clone();
     let msg = run_it(
         // just a bit of a hack to change the message type to discover
-        move || {
-            #[allow(clippy::single_match)]
-            match &new_args.msg {
-                MsgType::Dora(dora) => {
-                    new_args.msg = MsgType::Discover(dora.discover());
-                    new_args
-                }
-                _ => new_args,
+        move || match &new_args.msg {
+            Some(MsgType::Dora(dora)) => {
+                new_args.msg = Some(MsgType::Discover(dora.discover()));
+                new_args
             }
+            _ => new_args,
         },
-        soc.clone(),
         shutdown_rx.clone(),
+        send_tx.clone(),
+        recv_rx.clone(),
     )?;
 
     // then to request for the next run
     let new_args = match (&args.msg, msg) {
-        (MsgType::Dora(dora), Msg::V4(msg)) => {
+        (Some(MsgType::Dora(dora)), Msg::V4(msg)) => {
             let mut new_args = args.clone();
-            new_args.msg = MsgType::Request(dora.request(msg.yiaddr()));
+            new_args.msg = Some(MsgType::Request(dora.request(msg.yiaddr())));
             new_args
         }
         // exit if we were just meant to send 1 message
-        _ => return Ok(()),
+        _ => {
+            drop(send_tx);
+            drop(recv_rx);
+            return Ok(());
+        }
     };
-    run_it(move || new_args, soc, shutdown_rx)?;
+    run_it(move || new_args, shutdown_rx, send_tx, recv_rx)?;
+
     info!(elapsed = %util::PrettyTime(start.elapsed()), "total time");
 
     Ok(())
@@ -106,14 +136,16 @@ fn main() -> Result<()> {
 
 fn run_it<F: FnOnce() -> Args>(
     f: F,
-    soc: Arc<UdpSocket>,
     shutdown_rx: Receiver<()>,
+    send_tx: Sender<(Msg, SocketAddr)>,
+    recv_rx: Receiver<(Msg, SocketAddr)>,
 ) -> Result<Msg> {
     let args = f();
-    let mut runner = Runner {
+    let runner = Runner {
         args,
         shutdown_rx,
-        soc,
+        send_tx,
+        recv_rx,
     };
     match runner.run() {
         Err(err) => {
@@ -151,7 +183,7 @@ pub struct Args {
     pub target: IpAddr,
     /// select a msg type (can't use solicit with v4, or discover with v6)
     #[argh(subcommand)]
-    pub msg: MsgType,
+    pub msg: Option<MsgType>,
     /// address to bind to [default: INADDR_ANY:0]
     #[argh(option, short = 'b')]
     pub bind: Option<SocketAddr>,
@@ -165,8 +197,22 @@ pub struct Args {
     #[argh(option, default = "LogStructure::Pretty")]
     pub output: LogStructure,
     /// pass in a path to a rhai script (https://github.com/rhaiscript/rhai)
+    /// NOTE: must compile dhcpm with `rhai` feature
     #[argh(option)]
     pub script: Option<PathBuf>,
+}
+
+impl Args {
+    pub fn get_target(&self) -> (SocketAddr, bool) {
+        match self.target {
+            IpAddr::V4(addr) if addr.is_broadcast() => {
+                ((self.target, self.port.unwrap()).into(), true)
+            }
+            IpAddr::V4(addr) => ((addr, self.port.unwrap()).into(), false),
+            IpAddr::V6(addr) if addr.is_multicast() => ((addr, self.port.unwrap()).into(), false),
+            IpAddr::V6(addr) => ((IpAddr::V6(addr), self.port.unwrap()).into(), false),
+        }
+    }
 }
 
 #[derive(PartialEq, Debug, Clone, FromArgs)]
@@ -209,6 +255,21 @@ pub struct DiscoverArgs {
     /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
     #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
     pub params: Vec<v4::OptionCode>,
+}
+
+impl Default for DiscoverArgs {
+    fn default() -> Self {
+        Self {
+            chaddr: opts::get_mac(),
+            ciaddr: Ipv4Addr::UNSPECIFIED,
+            giaddr: Ipv4Addr::UNSPECIFIED,
+            req_addr: None,
+            subnet_select: None,
+            relay_link: None,
+            opt: Vec::new(),
+            params: opts::default_params(),
+        }
+    }
 }
 
 impl DiscoverArgs {
@@ -565,7 +626,8 @@ pub mod util {
 
     impl fmt::Display for PrettyTime {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}s", &self.0.as_secs_f32().to_string()[0..=7])
+            let secs = self.0.as_secs_f32().to_string();
+            write!(f, "{}s", if secs.len() <= 5 { &secs } else { &secs[0..=5] })
         }
     }
 

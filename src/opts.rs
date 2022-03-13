@@ -74,6 +74,8 @@ pub fn init_tracing(args: &Args) {
     }
 }
 
+/// takes input like: "118,hex,C0A80001" or "118,ip,192.168.0.1"
+/// and converts to a valid DhcpOption
 pub fn parse_opts(input: &str) -> Result<v4::DhcpOption, String> {
     match &input.splitn(3, ',').collect::<Vec<&str>>()[..] {
         [code, ty, val] => {
