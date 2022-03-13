@@ -168,6 +168,7 @@ impl Msg {
             Msg::V6(m) => format!("{:?}", m.opts()),
         }
     }
+    #[cfg(feature = "script")]
     pub fn unwrap_v4(self) -> v4::Message {
         match self {
             Msg::V4(m) => m,
