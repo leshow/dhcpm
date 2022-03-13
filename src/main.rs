@@ -96,10 +96,14 @@ fn main() -> Result<()> {
     #[cfg(feature = "script")]
     if let Some(path) = &args.script {
         info!("evaluating rhai script");
+        let mut args = args.clone();
+        // TODO: fix retries for script
+        args.no_retry = true;
+
         if let Err(err) = script::main(
             path,
             Runner {
-                args: args.clone(),
+                args,
                 shutdown_rx,
                 send_tx,
                 recv_rx,
@@ -205,7 +209,7 @@ pub struct Args {
     /// which port use. [default: 67 (v4) or 546 (v6)]
     #[argh(option, short = 'p')]
     pub port: Option<u16>,
-    /// query timeout in seconds [default: 3]
+    /// query timeout in seconds [default: 5]
     #[argh(option, short = 't', default = "opts::default_timeout()")]
     pub timeout: u64,
     /// select the log output format
@@ -215,6 +219,10 @@ pub struct Args {
     /// NOTE: must compile dhcpm with `rhai` feature
     #[argh(option)]
     pub script: Option<PathBuf>,
+    /// setting to "true" will prevent re-sending if we don't get a response [default: false]
+    /// retries are disabled when using the script feature
+    #[argh(option, default = "false")]
+    pub no_retry: bool,
 }
 
 impl Args {

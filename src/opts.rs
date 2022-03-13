@@ -12,8 +12,9 @@ use tracing_subscriber::{
 
 use crate::Args;
 
+/// default timeout is set to 5 (seconds)
 pub fn default_timeout() -> u64 {
-    3
+    5
 }
 
 pub fn get_mac() -> MacAddress {

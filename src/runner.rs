@@ -21,7 +21,7 @@ use crate::{
     Args, MsgType,
 };
 
-const MAX_RETRIES: usize = 3;
+const MAX_RETRIES: usize = 2;
 
 // TODO: only a single Runner can exist at a time right now
 
@@ -71,7 +71,11 @@ impl Runner {
                     // try again
                     self.send_msg()?;
                     start = Instant::now();
-                    continue;
+                    if self.args.no_retry {
+                        break;
+                    } else {
+                        continue;
+                    }
                 }
             }
         }
