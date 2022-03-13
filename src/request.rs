@@ -109,9 +109,7 @@ impl RequestArgs {
 }
 
 #[cfg(feature = "script")]
-use rhai::plugin::*;
-#[cfg(feature = "script")]
-use rhai::EvalAltResult;
+use rhai::{plugin::*, EvalAltResult};
 
 // exposing RequestArgs
 #[cfg(feature = "script")]

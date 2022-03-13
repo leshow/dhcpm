@@ -23,7 +23,11 @@ use crate::{
 
 const MAX_RETRIES: usize = 2;
 
-// TODO: only a single Runner can exist at a time right now
+// Only a single Runner can exist at a time right now,
+// becuase Runner is still fundamentally written to send a single
+// DHCP message. There must be only one instance running at a time,
+// otherwise the thread talking over Udp won't know which runner to
+// send the reply back to
 
 #[derive(Debug, Clone)]
 pub struct Runner {

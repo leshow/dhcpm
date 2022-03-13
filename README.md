@@ -1,6 +1,6 @@
 # dhcpm
 
-A cli tool (and dhcp script runner!) for constructing & sending mocked dhcp client messages. `dhcpm` won't actually mess with the IP assigned to your network interfaces, it is only intended to mock messages to test dhcp servers. Aims to support v4 & v6, though v6 support is unfinished. Allows sending dhcp messages to arbitrary ports and ips.
+A cli tool (and dhcp script runner!) for constructing & sending mocked dhcp client messages. `dhcpm` won't actually mess with the IP assigned to your network interfaces, it is intended to mock dhcp messages for testing dhcp servers. It aims to support v4 & v6, though v6 support is unfinished. Allows sending dhcp messages to non-default ports, and can be scripted with [rhai](https://github.com/rhaiscript/rhai).
 
 This software is a personal project and should be considered beta. I use the basic cli features often, but the scripting features are new.
 

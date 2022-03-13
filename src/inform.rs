@@ -94,9 +94,7 @@ impl InformArgs {
 }
 
 #[cfg(feature = "script")]
-use rhai::plugin::*;
-#[cfg(feature = "script")]
-use rhai::EvalAltResult;
+use rhai::{plugin::*, EvalAltResult};
 
 // exposing InformArgs
 #[cfg(feature = "script")]
