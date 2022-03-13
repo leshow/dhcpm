@@ -23,8 +23,12 @@ use crate::{
 
 const MAX_RETRIES: usize = 3;
 
-#[derive(Debug)]
+// TODO: only a single Runner can exist at a time right now
+
+#[derive(Debug, Clone)]
 pub struct Runner {
+    // TODO: de-couple runner from Args?
+    // would make it easier to swap message types/targets
     pub args: Args,
     pub shutdown_rx: Receiver<()>,
     pub send_tx: Sender<(Msg, SocketAddr)>,
@@ -37,7 +41,7 @@ impl Runner {
         let mut start = Instant::now();
         let timeout = tick(Duration::from_secs(self.args.timeout));
 
-        // do send and wait for recv
+        // do send
         self.send_msg()?;
         let mut count = 0;
         while count < MAX_RETRIES {
@@ -64,6 +68,7 @@ impl Runner {
                 recv(timeout) -> _ => {
                     debug!(elapsed = %PrettyTime(start.elapsed()), "received timeout-- retrying");
                     count += 1;
+                    // try again
                     self.send_msg()?;
                     start = Instant::now();
                     continue;
@@ -129,15 +134,16 @@ pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr)>, soc: Arc<UdpSocket>) 
 
 pub fn recv_thread(tx: Sender<(Msg, SocketAddr)>, soc: Arc<UdpSocket>) {
     thread::spawn(move || {
-        loop {
-            let mut buf = vec![0; 1024];
-            let (len, addr) = soc.recv_from(&mut buf)?;
+        let mut buf = vec![0; 1024];
+        while let Ok((len, addr)) = soc.recv_from(&mut buf) {
             trace!(buf = ?&buf[..len], "recv");
             let msg = if addr.is_ipv6() {
                 Msg::V6(v6::Message::decode(&mut Decoder::new(&buf[..len]))?)
             } else {
                 Msg::V4(v4::Message::decode(&mut Decoder::new(&buf[..len]))?)
             };
+            // reset buffer
+            buf = vec![0; 1024];
             tx.send_timeout((msg, addr), Duration::from_secs(1))?;
         }
         trace!("recv thread exited");
@@ -152,13 +158,24 @@ pub enum Msg {
 }
 
 impl Msg {
-    fn get_type(&self) -> String {
+    pub fn get_type(&self) -> String {
         match self {
             Msg::V4(m) => format!("{:?}", m.opts().msg_type().unwrap()),
             Msg::V6(m) => format!("{:?}", m.opts()),
         }
     }
-
+    pub fn unwrap_v4(self) -> v4::Message {
+        match self {
+            Msg::V4(m) => m,
+            _ => panic!("unwrapped wrong variant on message"),
+        }
+    }
+    // pub fn unwrap_v6(self) -> v6::Message {
+    //     match self {
+    //         Msg::V6(m) => m,
+    //         _ => panic!("unwrapped wrong variant on message"),
+    //     }
+    // }
     pub fn to_vec(&self) -> Result<Vec<u8>> {
         Ok(match self {
             Msg::V4(m) => m.to_vec()?,

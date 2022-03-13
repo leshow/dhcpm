@@ -128,6 +128,7 @@ pub fn parse_params(params: &str) -> Result<Vec<v4::OptionCode>, String> {
         .collect()
 }
 
+#[cfg(feature = "script")]
 pub fn params_to_str(params: &[v4::OptionCode]) -> String {
     params
         .iter()
