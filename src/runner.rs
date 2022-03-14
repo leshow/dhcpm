@@ -1,5 +1,4 @@
 use std::{
-    fmt,
     net::{IpAddr, SocketAddr, UdpSocket},
     sync::Arc,
     thread,
@@ -12,25 +11,21 @@ use tracing::{debug, error, info, trace};
 
 use dhcproto::{
     decoder::{Decodable, Decoder},
-    encoder::Encodable,
     v4, v6,
 };
 
 use crate::{
-    util::{PrettyPrint, PrettyTime},
+    util::{Msg, PrettyPrint, PrettyTime},
     Args, MsgType,
 };
 
 const MAX_RETRIES: usize = 2;
 
-// Only a single Runner can exist at a time right now,
-// becuase Runner is still fundamentally written to send a single
-// DHCP message. There must be only one instance running at a time,
-// otherwise the thread talking over Udp won't know which runner to
-// send the reply back to
+// Runner is still fundamentally written to send a single
+// DHCP message over a single socket at a time.
 
 #[derive(Debug, Clone)]
-pub struct Runner {
+pub struct TimeoutRunner {
     // TODO: de-couple runner from Args?
     // would make it easier to swap message types/targets
     pub args: Args,
@@ -39,8 +34,8 @@ pub struct Runner {
     pub recv_rx: Receiver<(Msg, SocketAddr)>,
 }
 
-impl Runner {
-    pub fn run(mut self) -> Result<Msg> {
+impl TimeoutRunner {
+    pub fn send(mut self) -> Result<Msg> {
         let total = Instant::now();
         let mut start = Instant::now();
         let timeout = tick(Duration::from_secs(self.args.timeout));
@@ -54,7 +49,7 @@ impl Runner {
                 recv(self.recv_rx) -> res => {
                     match res {
                         Ok((msg, _addr)) => {
-                            info!(msg_type = ?msg.get_type(), elapsed = %PrettyTime(start.elapsed()), msg = %PrettyPrint(PrettyMsg(&msg)),"RECEIVED");
+                            info!(msg_type = ?msg.get_type(), elapsed = %PrettyTime(start.elapsed()), msg = %PrettyPrint(&msg),"RECEIVED");
                             return Ok(msg);
                         }
                         Err(err) => {
@@ -83,7 +78,7 @@ impl Runner {
                 }
             }
         }
-        let Runner { send_tx, .. } = self;
+        let TimeoutRunner { send_tx, .. } = self;
         drop(send_tx);
 
         Err(anyhow::anyhow!(
@@ -133,7 +128,7 @@ pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr)>, soc: Arc<UdpSocket>) 
                 IpAddr::V6(addr) => (IpAddr::V6(addr), port).into(),
             };
             soc.send_to(&msg.to_vec()?[..], target)?;
-            info!(msg_type = ?msg.get_type(), ?target, msg = %PrettyPrint(PrettyMsg(&msg)), "SENT");
+            info!(msg_type = ?msg.get_type(), ?target, msg = %PrettyPrint(&msg), "SENT");
         }
         trace!("sender thread exited");
         Ok::<_, anyhow::Error>(())
@@ -157,72 +152,4 @@ pub fn recv_thread(tx: Sender<(Msg, SocketAddr)>, soc: Arc<UdpSocket>) {
         trace!("recv thread exited");
         Ok::<_, anyhow::Error>(())
     });
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Msg {
-    V4(v4::Message),
-    V6(v6::Message),
-}
-
-impl Msg {
-    pub fn get_type(&self) -> String {
-        match self {
-            Msg::V4(m) => format!("{:?}", m.opts().msg_type().unwrap()),
-            Msg::V6(m) => format!("{:?}", m.opts()),
-        }
-    }
-    #[cfg(feature = "script")]
-    pub fn unwrap_v4(self) -> v4::Message {
-        match self {
-            Msg::V4(m) => m,
-            _ => panic!("unwrapped wrong variant on message"),
-        }
-    }
-    // pub fn unwrap_v6(self) -> v6::Message {
-    //     match self {
-    //         Msg::V6(m) => m,
-    //         _ => panic!("unwrapped wrong variant on message"),
-    //     }
-    // }
-    pub fn to_vec(&self) -> Result<Vec<u8>> {
-        Ok(match self {
-            Msg::V4(m) => m.to_vec()?,
-            Msg::V6(m) => m.to_vec()?,
-        })
-    }
-}
-
-#[derive(Clone)]
-struct PrettyMsg<'a>(&'a Msg);
-
-impl<'a> fmt::Debug for PrettyMsg<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            Msg::V4(msg) => {
-                f.debug_struct("v4::Message")
-                    .field("opcode", &msg.opcode())
-                    .field("htype", &msg.htype())
-                    .field("hlen", &msg.hlen())
-                    .field("hops", &msg.hops())
-                    .field("xid", &msg.xid())
-                    .field("secs", &msg.secs())
-                    .field("flags", &msg.flags())
-                    .field("ciaddr", &msg.ciaddr())
-                    .field("yiaddr", &msg.yiaddr())
-                    .field("siaddr", &msg.siaddr())
-                    .field("giaddr", &msg.giaddr())
-                    .field("chaddr", &hex::encode(msg.chaddr()))
-                    .field("sname", &msg.sname())
-                    .field("fname", &msg.fname())
-                    // .field("magic", &String::from_utf8_lossy(self.magic()))
-                    .field("opts", &msg.opts())
-                    .finish()
-            }
-            Msg::V6(_msg) => {
-                // unfinished
-                todo!("unfinished")
-            }
-        }
-    }
 }

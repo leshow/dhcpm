@@ -7,8 +7,7 @@ use rhai::{plugin::*, Engine};
 use tracing::{debug, info};
 
 use crate::{
-    runner::{Msg, Runner},
-    DiscoverArgs, InformArgs, MsgType, ReleaseArgs, RequestArgs,
+    runner::TimeoutRunner, util::Msg, DiscoverArgs, InformArgs, MsgType, ReleaseArgs, RequestArgs,
 };
 
 // exposing Msg
@@ -96,7 +95,7 @@ mod v4_msg_mod {
     }
 }
 
-pub fn main<P: Into<PathBuf>>(path: P, runner: Runner) -> Result<(), Box<EvalAltResult>> {
+pub fn main<P: Into<PathBuf>>(path: P, runner: TimeoutRunner) -> Result<(), Box<EvalAltResult>> {
     let mut engine = Engine::new();
     // TODO: this is gross
     let discover_run = runner.clone();
@@ -136,26 +135,26 @@ pub fn main<P: Into<PathBuf>>(path: P, runner: Runner) -> Result<(), Box<EvalAlt
                 let mut new_runner = discover_run.clone();
                 // replace runner args so it knows which message type to run
                 new_runner.args.msg = Some(MsgType::Discover(args.clone()));
-                new_runner.run().expect("runner failed").unwrap_v4()
+                new_runner.send().expect("runner failed").unwrap_v4()
             }
         })
         .register_fn("send", move |args: &mut RequestArgs| {
             let mut new_runner = request_run.clone();
             // replace runner args so it knows which message type to run
             new_runner.args.msg = Some(MsgType::Request(args.clone()));
-            new_runner.run().expect("runner failed").unwrap_v4()
+            new_runner.send().expect("runner failed").unwrap_v4()
         })
         .register_fn("send", move |args: &mut ReleaseArgs| {
             let mut new_runner = release_run.clone();
             // replace runner args so it knows which message type to run
             new_runner.args.msg = Some(MsgType::Release(args.clone()));
-            new_runner.run().expect("runner failed").unwrap_v4()
+            new_runner.send().expect("runner failed").unwrap_v4()
         })
         .register_fn("send", move |args: &mut InformArgs| {
             let mut new_runner = inform_run.clone();
             // replace runner args so it knows which message type to run
             new_runner.args.msg = Some(MsgType::Inform(args.clone()));
-            new_runner.run().expect("runner failed").unwrap_v4()
+            new_runner.send().expect("runner failed").unwrap_v4()
         });
     // Any function or closure that takes an '&str' argument can be used to override 'print'.
     engine.on_print(|msg| info!(rhai = msg));

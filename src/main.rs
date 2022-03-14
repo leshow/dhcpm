@@ -32,11 +32,11 @@ mod runner;
 #[cfg(feature = "script")]
 mod script;
 use opts::{parse_opts, parse_params};
-use runner::Runner;
+use runner::TimeoutRunner;
 
 use crate::{
     discover::DiscoverArgs, inform::InformArgs, release::ReleaseArgs, request::RequestArgs,
-    runner::Msg,
+    util::Msg,
 };
 
 #[allow(clippy::collapsible_else_if)]
@@ -85,7 +85,7 @@ fn main() -> Result<()> {
 
     // messages put on `send_tx` will go out on the socket
     let (send_tx, send_rx) = crossbeam_channel::bounded(1);
-    // messages put on `recv_tx` were received from the socket
+    // messages coming from `recv_rx` were received from the socket
     let (recv_tx, recv_rx) = crossbeam_channel::bounded(1);
 
     runner::sender_thread(send_rx, soc.clone());
@@ -102,7 +102,7 @@ fn main() -> Result<()> {
 
         if let Err(err) = script::main(
             path,
-            Runner {
+            TimeoutRunner {
                 args,
                 shutdown_rx,
                 send_tx,
@@ -160,13 +160,13 @@ fn run_it<F: FnOnce() -> Args>(
     recv_rx: Receiver<(Msg, SocketAddr)>,
 ) -> Result<Msg> {
     let args = f();
-    let runner = Runner {
+    let runner = TimeoutRunner {
         args,
         shutdown_rx,
         send_tx,
         recv_rx,
     };
-    match runner.run() {
+    match runner.send() {
         Err(err) => {
             error!(%err, "got an error");
             Err(err)
@@ -324,6 +324,43 @@ pub struct SolicitArgs {}
 pub mod util {
     use std::{fmt, time::Duration};
 
+    use anyhow::Result;
+    use dhcproto::{v4, v6, Encodable};
+
+    #[derive(Clone, PartialEq, Eq)]
+    pub enum Msg {
+        V4(v4::Message),
+        V6(v6::Message),
+    }
+
+    impl Msg {
+        pub fn get_type(&self) -> String {
+            match self {
+                Msg::V4(m) => format!("{:?}", m.opts().msg_type().unwrap()),
+                Msg::V6(m) => format!("{:?}", m.opts()),
+            }
+        }
+        #[cfg(feature = "script")]
+        pub fn unwrap_v4(self) -> v4::Message {
+            match self {
+                Msg::V4(m) => m,
+                _ => panic!("unwrapped wrong variant on message"),
+            }
+        }
+        // pub fn unwrap_v6(self) -> v6::Message {
+        //     match self {
+        //         Msg::V6(m) => m,
+        //         _ => panic!("unwrapped wrong variant on message"),
+        //     }
+        // }
+        pub fn to_vec(&self) -> Result<Vec<u8>> {
+            Ok(match self {
+                Msg::V4(m) => m.to_vec()?,
+                Msg::V6(m) => m.to_vec()?,
+            })
+        }
+    }
+
     #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
     pub struct PrettyTime(pub Duration);
 
@@ -352,6 +389,36 @@ pub mod util {
     impl<T: fmt::Debug> fmt::Debug for PrettyPrint<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{:?}", self.0)
+        }
+    }
+
+    impl fmt::Debug for Msg {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Msg::V4(msg) => {
+                    f.debug_struct("v4::Message")
+                        // .field("opcode", &msg.opcode())
+                        // .field("htype", &msg.htype())
+                        // .field("hlen", &msg.hlen())
+                        // .field("hops", &msg.hops())
+                        .field("xid", &msg.xid())
+                        // .field("secs", &msg.secs())
+                        .field("flags", &msg.flags())
+                        .field("ciaddr", &msg.ciaddr())
+                        .field("yiaddr", &msg.yiaddr())
+                        .field("siaddr", &msg.siaddr())
+                        .field("giaddr", &msg.giaddr())
+                        .field("chaddr", &format!("0x{}", hex::encode(msg.chaddr())))
+                        // .field("sname", &msg.sname())
+                        // .field("fname", &msg.fname())
+                        // .field("magic", &String::from_utf8_lossy(self.magic()))
+                        .field("opts", &msg.opts())
+                        .finish()
+                }
+                Msg::V6(_msg) => {
+                    todo!("unfinished")
+                }
+            }
         }
     }
 }
