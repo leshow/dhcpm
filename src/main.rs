@@ -31,7 +31,7 @@ mod request;
 mod runner;
 #[cfg(feature = "script")]
 mod script;
-use opts::{parse_opts, parse_params};
+use opts::{parse_mac, parse_opts, parse_params};
 use runner::TimeoutRunner;
 
 use crate::{
@@ -252,8 +252,13 @@ pub enum MsgType {
 /// Sends Discover then Request
 #[argh(subcommand, name = "dora")]
 pub struct DoraArgs {
-    /// supply a mac address for DHCPv4 [default: first avail mac]
-    #[argh(option, short = 'c', default = "opts::get_mac()")]
+    /// supply a mac address for DHCPv4 (use "random" for a random mac) [default: first interface mac]
+    #[argh(
+        option,
+        short = 'c',
+        from_str_fn(parse_mac),
+        default = "opts::get_mac()"
+    )]
     pub chaddr: MacAddress,
     /// address of client [default: None]
     #[argh(option, default = "Ipv4Addr::UNSPECIFIED")]

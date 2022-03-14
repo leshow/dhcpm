@@ -4,14 +4,19 @@ use argh::FromArgs;
 use dhcproto::v4;
 use mac_address::MacAddress;
 
-use crate::opts::{self, parse_opts, parse_params};
+use crate::opts::{self, parse_mac, parse_opts, parse_params};
 
 #[derive(FromArgs, PartialEq, Debug, Clone)]
 /// Send a DISCOVER msg
 #[argh(subcommand, name = "discover")]
 pub struct DiscoverArgs {
-    /// supply a mac address for DHCPv4 [default: first avail mac]
-    #[argh(option, short = 'c', default = "opts::get_mac()")]
+    /// supply a mac address for DHCPv4 (use "random" for a random mac) [default: first interface mac]
+    #[argh(
+        option,
+        short = 'c',
+        from_str_fn(parse_mac),
+        default = "opts::get_mac()"
+    )]
     pub chaddr: MacAddress,
     /// address of client [default: None]
     #[argh(option, default = "Ipv4Addr::UNSPECIFIED")]

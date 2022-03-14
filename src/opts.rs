@@ -129,6 +129,13 @@ pub fn parse_params(params: &str) -> Result<Vec<v4::OptionCode>, String> {
         .collect()
 }
 
+pub fn parse_mac(mac: &str) -> Result<MacAddress, String> {
+    match mac {
+        "random" => Ok(rand::random::<[u8; 6]>().into()),
+        mac => MacAddress::from_str(mac).map_err(|err| format!("{:?}", err)),
+    }
+}
+
 #[cfg(feature = "script")]
 pub fn params_to_str(params: &[v4::OptionCode]) -> String {
     params
