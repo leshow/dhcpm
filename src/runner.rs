@@ -35,6 +35,10 @@ pub struct TimeoutRunner {
 }
 
 impl TimeoutRunner {
+    // TODO: can probably &mut self & take Msg as param
+    /// Generate a message from `Args` and send it, waiting for a reply
+    /// if `args.no_retry` is false (by default) we will retry `MAX_RETRIES` times
+    /// for a timeout of `args.timeout`
     pub fn send(mut self) -> Result<Msg> {
         let total = Instant::now();
         let mut start = Instant::now();
