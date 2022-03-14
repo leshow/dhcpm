@@ -212,15 +212,14 @@ pub struct Args {
     /// query timeout in seconds [default: 5]
     #[argh(option, short = 't', default = "opts::default_timeout()")]
     pub timeout: u64,
-    /// select the log output format
+    /// select the log output format (json|pretty|debug) [default: pretty]
     #[argh(option, default = "LogStructure::Pretty")]
     pub output: LogStructure,
     /// pass in a path to a rhai script (https://github.com/rhaiscript/rhai)
-    /// NOTE: must compile dhcpm with `rhai` feature
+    /// NOTE: must compile dhcpm with `script` feature
     #[argh(option)]
     pub script: Option<PathBuf>,
     /// setting to "true" will prevent re-sending if we don't get a response [default: false]
-    /// retries are disabled when using the script feature
     #[argh(option, default = "false")]
     pub no_retry: bool,
 }
