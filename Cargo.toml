@@ -7,7 +7,7 @@ authors = ["Evan Cameron <cameron.evan@gmail.com"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dhcproto = { git = "https://github.com/bluecatengineering/dhcproto" }
+dhcproto = "0.7.0"
 anyhow = "1.0"
 argh = "0.1.7"
 crossbeam-channel = "0.5.1"
