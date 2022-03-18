@@ -4,6 +4,18 @@ A cli tool (and dhcp script runner!) for constructing & sending mocked dhcp clie
 
 This software is a personal project and should be considered beta. I use the basic cli features often, but the scripting features are new.
 
+## Installation
+
+You can install with
+```
+cargo install dhcpm
+```
+To include the rhai scripting feature, add
+
+```
+cargo install --feautures "script"
+```
+
 ## Use
 
 ```
