@@ -3,7 +3,13 @@ name = "dhcpm"
 version = "0.1.0"
 edition = "2021"
 authors = ["Evan Cameron <cameron.evan@gmail.com"]
-
+description = """
+A cli for mocking DHCP messages and running rhai scripts to test DHCP servers. Aims to support v4 & v6, thought v6 is as of yet unfinished.
+"""
+categories = ["network-programming", "development-tools","command-line-utilities"]
+repository = "https://github.com/leshow/dhcpm"
+keywords = ["dhcp","dhcpv4","dhcpv6", "cli"]
+license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
