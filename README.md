@@ -13,9 +13,11 @@ This software is a personal project and should be considered beta. I use the bas
 ## Installation
 
 You can install with
+
 ```
 cargo install dhcpm
 ```
+
 To include the rhai scripting feature, add
 
 ```
@@ -32,8 +34,8 @@ Usage: dhcpm <target> [-b <bind>] [-p <port>] [-t <timeout>] [--output <output>]
 dhcpm is a cli tool for sending dhcpv4/v6 messages
 
 ex  dhcpv4:
-        dhcpm 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
         dhcpm 255.255.255.255 discover (broadcast discover to default dhcp port)
+        dhcpm 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
         dhcpm 192.168.0.1 dora (unicast DORA to 192.168.0.1)
         dhcpm 192.168.0.1 dora -o 118,C0A80001 (unicast DORA, incl opt 118:192.168.0.1)
     dhcpv6:
@@ -121,4 +123,3 @@ Message types supported in script are:
 - `inform::args_default()`
 
 Be careful about what scripts you choose to run, especially if you use ports only accessible with `sudo`, as the scripts arbitrary code will be executed with whatever permissions you give it.
-

@@ -23,6 +23,7 @@ use mac_address::MacAddress;
 use opts::LogStructure;
 use tracing::{error, info, trace};
 
+mod decline;
 mod discover;
 mod inform;
 mod opts;
@@ -35,8 +36,8 @@ use opts::{parse_mac, parse_opts, parse_params};
 use runner::TimeoutRunner;
 
 use crate::{
-    discover::DiscoverArgs, inform::InformArgs, release::ReleaseArgs, request::RequestArgs,
-    util::Msg,
+    decline::DeclineArgs, discover::DiscoverArgs, inform::InformArgs, release::ReleaseArgs,
+    request::RequestArgs, util::Msg,
 };
 
 #[allow(clippy::collapsible_else_if)]
@@ -188,8 +189,8 @@ fn ctrl_channel() -> Result<Receiver<()>> {
 #[argh(description = "dhcpm is a cli tool for sending dhcpv4/v6 messages
 
 ex  dhcpv4:
-        dhcpm 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
         dhcpm 255.255.255.255 discover (broadcast discover to default dhcp port)
+        dhcpm 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
         dhcpm 192.168.0.1 dora (unicast DORA to 192.168.0.1)
         dhcpm 192.168.0.1 dora -o 118,C0A80001 (unicast DORA, incl opt 118:192.168.0.1)
     dhcpv6:
@@ -244,6 +245,7 @@ pub enum MsgType {
     Request(RequestArgs),
     Release(ReleaseArgs),
     Inform(InformArgs),
+    Decline(DeclineArgs),
     Dora(DoraArgs),
     Solicit(SolicitArgs),
 }
