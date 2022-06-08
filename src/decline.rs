@@ -43,8 +43,8 @@ pub struct DeclineArgs {
     /// [ex: these are equivalent- "118,hex,C0A80001" or "118,ip,192.168.0.1"]
     #[argh(option, short = 'o', from_str_fn(parse_opts))]
     pub opt: Vec<v4::DhcpOption>,
-    /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
-    #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
+    /// params to include: [default: None]
+    #[argh(option, from_str_fn(parse_params), default = "Vec::new()")]
     pub params: Vec<v4::OptionCode>,
 }
 
@@ -60,7 +60,7 @@ impl Default for DeclineArgs {
             subnet_select: None,
             relay_link: None,
             opt: Vec::new(),
-            params: opts::default_params(),
+            params: Vec::new(),
         }
     }
 }
