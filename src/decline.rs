@@ -115,7 +115,7 @@ use rhai::{plugin::*, EvalAltResult};
 // exposing ReleaseArgs
 #[cfg(feature = "script")]
 #[export_module]
-pub mod release_mod {
+pub mod decline_mod {
     use tracing::trace;
     #[rhai_fn()]
     pub fn args_default() -> DeclineArgs {

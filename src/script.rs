@@ -7,7 +7,8 @@ use rhai::{plugin::*, Engine};
 use tracing::{debug, info};
 
 use crate::{
-    runner::TimeoutRunner, util::Msg, DiscoverArgs, InformArgs, MsgType, ReleaseArgs, RequestArgs,
+    decline::DeclineArgs, runner::TimeoutRunner, util::Msg, DiscoverArgs, InformArgs, MsgType,
+    ReleaseArgs, RequestArgs,
 };
 
 // exposing Msg
@@ -101,6 +102,7 @@ pub fn main<P: Into<PathBuf>>(path: P, runner: TimeoutRunner) -> Result<(), Box<
     let discover_run = runner.clone();
     let request_run = runner.clone();
     let release_run = runner.clone();
+    let decline_run = runner.clone();
     let inform_run = runner;
 
     engine
@@ -111,6 +113,7 @@ pub fn main<P: Into<PathBuf>>(path: P, runner: TimeoutRunner) -> Result<(), Box<
         .register_type_with_name::<RequestArgs>("RequestArgs")
         .register_type_with_name::<ReleaseArgs>("ReleaseArgs")
         .register_type_with_name::<InformArgs>("InformArgs")
+        .register_type_with_name::<DeclineArgs>("DeclineArgs")
         .register_type_with_name::<Msg>("Msg")
         .register_type_with_name::<v4::Message>("v4::Message")
         // register modules
@@ -127,6 +130,10 @@ pub fn main<P: Into<PathBuf>>(path: P, runner: TimeoutRunner) -> Result<(), Box<
         .register_static_module(
             "release",
             exported_module!(crate::release::release_mod).into(),
+        )
+        .register_static_module(
+            "decline",
+            exported_module!(crate::decline::decline_mod).into(),
         )
         .register_static_module("inform", exported_module!(crate::inform::inform_mod).into())
         // TODO: return result?
@@ -155,6 +162,14 @@ pub fn main<P: Into<PathBuf>>(path: P, runner: TimeoutRunner) -> Result<(), Box<
             // replace runner args so it knows which message type to run
             new_runner.args.msg = Some(MsgType::Inform(args.clone()));
             new_runner.send().expect("runner failed").unwrap_v4()
+        })
+        .register_fn("send", {
+            move |args: &mut DeclineArgs| {
+                let mut new_runner = decline_run.clone();
+                // replace runner args so it knows which message type to run
+                new_runner.args.msg = Some(MsgType::Decline(args.clone()));
+                new_runner.send().expect("runner failed").unwrap_v4()
+            }
         });
     // Any function or closure that takes an '&str' argument can be used to override 'print'.
     engine.on_print(|msg| info!(rhai = msg));
