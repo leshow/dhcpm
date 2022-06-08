@@ -34,10 +34,11 @@ Usage: dhcpm <target> [-b <bind>] [-p <port>] [-t <timeout>] [--output <output>]
 dhcpm is a cli tool for sending dhcpv4/v6 messages
 
 ex  dhcpv4:
-        dhcpm 255.255.255.255 discover (broadcast discover to default dhcp port)
-        dhcpm 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
-        dhcpm 192.168.0.1 dora (unicast DORA to 192.168.0.1)
-        dhcpm 192.168.0.1 dora -o 118,C0A80001 (unicast DORA, incl opt 118:192.168.0.1)
+        dhcpm 255.255.255.255 discover          (broadcast discover to default dhcp port)
+        dhcpm 192.168.0.255 discover            (broadcast discover on interface bound to 192.168.0.x)
+        dhcpm 0.0.0.0 -p 9901 discover          (unicast discover to 0.0.0.0:9901)
+        dhcpm 192.168.0.1 dora                  (unicast DORA to 192.168.0.1)
+        dhcpm 192.168.0.1 dora -o 118,C0A80001  (unicast DORA, incl opt 118:192.168.0.1)
     dhcpv6:
         dhcpm ::0 -p 9901 solicit       (unicast solicit to [::0]:9901)
         dhcpm ff02::1:2 solicit         (multicast solicit to default port)
@@ -89,6 +90,22 @@ To send a broadcast message (with the broadcast flag set) use the network broadc
 
 ```
 dhcpm 255.255.255.255 discover
+```
+
+### Broadcast on specific interface
+
+Perhaps in the future we will add a way to pass the interface name in as a parameter, but currently you can use `ip addr` on linux to get the broadcast address of a particular interface:
+
+```
+2: enp6s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether xx:xx:xx:xx:xx:xx brd ff:ff:ff:ff:ff:ff
+    inet 192.168.0.130/24 brd 192.168.0.255 scope global noprefixroute enp6s0
+```
+
+See `brd 192.168.0.255`. You can pass this to `dhcpm` and we will broadcast on that interface (`enp6s0` in this example)
+
+```
+dhcpm 192.168.0.255 discover
 ```
 
 ### Message parameters

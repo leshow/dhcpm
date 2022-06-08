@@ -157,7 +157,7 @@ fn main() -> Result<()> {
 fn run_it<F: FnOnce() -> Args>(
     f: F,
     shutdown_rx: Receiver<()>,
-    send_tx: Sender<(Msg, SocketAddr)>,
+    send_tx: Sender<(Msg, SocketAddr, bool)>,
     recv_rx: Receiver<(Msg, SocketAddr)>,
 ) -> Result<Msg> {
     let args = f();
@@ -189,10 +189,11 @@ fn ctrl_channel() -> Result<Receiver<()>> {
 #[argh(description = "dhcpm is a cli tool for sending dhcpv4/v6 messages
 
 ex  dhcpv4:
-        dhcpm 255.255.255.255 discover (broadcast discover to default dhcp port)
-        dhcpm 0.0.0.0 -p 9901 discover  (unicast discover to 0.0.0.0:9901)
-        dhcpm 192.168.0.1 dora (unicast DORA to 192.168.0.1)
-        dhcpm 192.168.0.1 dora -o 118,C0A80001 (unicast DORA, incl opt 118:192.168.0.1)
+        dhcpm 255.255.255.255 discover          (broadcast discover to default dhcp port)
+        dhcpm 192.168.0.255 discover            (broadcast discover on interface bound to 192.168.0.x)
+        dhcpm 0.0.0.0 -p 9901 discover          (unicast discover to 0.0.0.0:9901)
+        dhcpm 192.168.0.1 dora                  (unicast DORA to 192.168.0.1)
+        dhcpm 192.168.0.1 dora -o 118,C0A80001  (unicast DORA, incl opt 118:192.168.0.1)
     dhcpv6:
         dhcpm ::0 -p 9901 solicit       (unicast solicit to [::0]:9901)
         dhcpm ff02::1:2 solicit         (multicast solicit to default port)
@@ -228,11 +229,16 @@ pub struct Args {
 impl Args {
     pub fn get_target(&self) -> (SocketAddr, bool) {
         match self.target {
-            IpAddr::V4(addr) if addr.is_broadcast() => {
-                ((self.target, self.port.unwrap()).into(), true)
+            IpAddr::V4(addr) => {
+                let [_, _, _, brd] = addr.octets();
+                if addr.is_broadcast() || brd == 255_u8 {
+                    trace!("using broadcast address");
+                    ((self.target, self.port.unwrap()).into(), true)
+                } else {
+                    ((self.target, self.port.unwrap()).into(), false)
+                }
             }
-            IpAddr::V4(addr) => ((addr, self.port.unwrap()).into(), false),
-            IpAddr::V6(addr) if addr.is_multicast() => ((addr, self.port.unwrap()).into(), false),
+            IpAddr::V6(addr) if addr.is_multicast() => ((addr, self.port.unwrap()).into(), true),
             IpAddr::V6(addr) => ((IpAddr::V6(addr), self.port.unwrap()).into(), false),
         }
     }

@@ -30,7 +30,7 @@ pub struct TimeoutRunner {
     // would make it easier to swap message types/targets
     pub args: Args,
     pub shutdown_rx: Receiver<()>,
-    pub send_tx: Sender<(Msg, SocketAddr)>,
+    pub send_tx: Sender<(Msg, SocketAddr, bool)>,
     pub recv_rx: Receiver<(Msg, SocketAddr)>,
 }
 
@@ -110,23 +110,23 @@ impl TimeoutRunner {
             // dhcpv6
             MsgType::Solicit(_) => panic!("solicit unimplemented"),
         };
-        self.send_tx.send((msg, target))?;
+        self.send_tx.send((msg, target, broadcast))?;
         Ok(())
     }
 }
 
-pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr)>, soc: Arc<UdpSocket>) {
+pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr, bool)>, soc: Arc<UdpSocket>) {
     thread::spawn(move || {
-        while let Ok((msg, target)) = send_rx.recv() {
+        while let Ok((msg, target, brd)) = send_rx.recv() {
             let port = target.port();
             // set broadcast appropriately
             let target: SocketAddr = match target.ip() {
-                IpAddr::V4(addr) if addr.is_broadcast() => {
+                IpAddr::V4(addr) if brd => {
                     soc.set_broadcast(true)?;
-                    (target.ip(), port).into()
+                    (addr, port).into()
                 }
                 IpAddr::V4(addr) => (addr, port).into(),
-                IpAddr::V6(addr) if addr.is_multicast() => {
+                IpAddr::V6(addr) if brd => {
                     soc.join_multicast_v6(&addr, 0)?;
                     (addr, port).into()
                 }
