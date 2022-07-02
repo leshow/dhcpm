@@ -95,9 +95,15 @@ To send a broadcast message (with the broadcast flag set) use the network broadc
 dhcpm 255.255.255.255 discover
 ```
 
-### Broadcast on specific interface
+### Using specific interface
 
-Perhaps in the future we will add a way to pass the interface name in as a parameter, but currently you can use `ip addr` on linux to get the broadcast address of a particular interface:
+You can pass the `--interface/-i` param to bind to a specific interface by name, for example `--interface enp6s0`. Using this, you will only receive/send responses over that device. Ex,
+
+```
+dhcpm 255.255.255.255 -i enp6s0 discover --chaddr random
+```
+
+You can also use `ip addr` on linux to get the broadcast address of a particular interface:
 
 ```
 2: enp6s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
@@ -105,7 +111,7 @@ Perhaps in the future we will add a way to pass the interface name in as a param
     inet 192.168.0.130/24 brd 192.168.0.255 scope global noprefixroute enp6s0
 ```
 
-See `brd 192.168.0.255`. You can pass this to `dhcpm` and we will broadcast on that interface (`enp6s0` in this example)
+Note `brd 192.168.0.255`. You can pass this to `dhcpm` and the kernel should select that interface to broadcast on (`enp6s0` in this example)
 
 ```
 dhcpm 192.168.0.255 discover
