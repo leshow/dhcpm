@@ -10,12 +10,13 @@
 
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
+    os::unix::prelude::{FromRawFd, IntoRawFd},
     path::PathBuf,
     sync::Arc,
     time::Instant,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use argh::FromArgs;
 use crossbeam_channel::{Receiver, Sender};
 use dhcproto::{v4, v6};
@@ -80,10 +81,36 @@ fn main() -> Result<()> {
     opts::init_tracing(&args);
     trace!(?args);
 
-    let shutdown_rx = ctrl_channel()?;
-    let bind_addr: SocketAddr = args.bind.unwrap();
-    let soc = Arc::new(UdpSocket::bind(bind_addr)?);
+    let bind_addr: SocketAddr = args.bind.context("bind address must be specified")?;
+    let soc = match args.interface {
+        Some(ref int) => {
+            let socket = socket2::Socket::new(
+                if args.target.is_ipv6() {
+                    socket2::Domain::IPV6
+                } else {
+                    socket2::Domain::IPV4
+                },
+                socket2::Type::DGRAM,
+                None,
+            )?;
+            socket.bind_device(Some(int.as_bytes()))?;
+            socket.bind(&bind_addr.into())?;
+            info!("bound to interface {}", int);
+            #[cfg(windows)]
+            unsafe {
+                UdpSocket::from_raw_socket(socket.into_raw_socket())?
+            }
+            #[cfg(unix)]
+            unsafe {
+                UdpSocket::from_raw_fd(socket.into_raw_fd())
+            }
+        }
+        None => UdpSocket::bind(bind_addr)?,
+    };
+    soc.set_broadcast(true)?;
+    let soc = Arc::new(soc);
 
+    let shutdown_rx = ctrl_channel()?;
     // messages put on `send_tx` will go out on the socket
     let (send_tx, send_rx) = crossbeam_channel::bounded(1);
     // messages coming from `recv_rx` were received from the socket
@@ -208,6 +235,9 @@ pub struct Args {
     /// address to bind to [default: INADDR_ANY:0]
     #[argh(option, short = 'b')]
     pub bind: Option<SocketAddr>,
+    /// interface to use (requires root or `cap_net_raw`) [default: None - selected by OS]
+    #[argh(option, short = 'i')]
+    pub interface: Option<String>,
     /// which port use. [default: 67 (v4) or 546 (v6)]
     #[argh(option, short = 'p')]
     pub port: Option<u16>,
@@ -415,7 +445,7 @@ pub mod util {
                         // .field("hops", &msg.hops())
                         .field("xid", &msg.xid())
                         // .field("secs", &msg.secs())
-                        .field("flags", &msg.flags())
+                        .field("broadcast flag", &msg.flags().broadcast())
                         .field("ciaddr", &msg.ciaddr())
                         .field("yiaddr", &msg.yiaddr())
                         .field("siaddr", &msg.siaddr())

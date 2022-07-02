@@ -53,7 +53,7 @@ impl TimeoutRunner {
                 recv(self.recv_rx) -> res => {
                     match res {
                         Ok((msg, _addr)) => {
-                            info!(msg_type = ?msg.get_type(), elapsed = %PrettyTime(start.elapsed()), msg = %PrettyPrint(&msg),"RECEIVED");
+                            info!(msg_type = %msg.get_type(), elapsed = %PrettyTime(start.elapsed()), msg = %PrettyPrint(&msg), "RECEIVED");
                             return Ok(msg);
                         }
                         Err(err) => {
@@ -122,7 +122,7 @@ pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr, bool)>, soc: Arc<UdpSoc
             // set broadcast appropriately
             let target: SocketAddr = match target.ip() {
                 IpAddr::V4(addr) if brd => {
-                    soc.set_broadcast(true)?;
+                    // soc.set_broadcast(true)?;
                     (addr, port).into()
                 }
                 IpAddr::V4(addr) => (addr, port).into(),
@@ -133,7 +133,7 @@ pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr, bool)>, soc: Arc<UdpSoc
                 IpAddr::V6(addr) => (IpAddr::V6(addr), port).into(),
             };
             soc.send_to(&msg.to_vec()?[..], target)?;
-            info!(msg_type = ?msg.get_type(), ?target, msg = %PrettyPrint(&msg), "SENT");
+            info!(msg_type = %msg.get_type(), ?target, msg = %PrettyPrint(&msg), "SENT");
         }
         trace!("sender thread exited");
         Ok::<_, anyhow::Error>(())
