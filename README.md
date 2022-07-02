@@ -29,7 +29,7 @@ cargo install dhcpm --feautures "script"
 ```
 > dhcpm --help
 
-Usage: dhcpm <target> [-b <bind>] [-p <port>] [-t <timeout>] [--output <output>] [--script <script>] [--no-retry <no-retry>] [<command>] [<args>]
+Usage: dhcpm <target> [-b <bind>] [-i <interface>] [-p <port>] [-t <timeout>] [--output <output>] [--script <script>] [--no-retry <no-retry>] [<command>] [<args>]
 
 dhcpm is a cli tool for sending dhcpv4/v6 messages
 
@@ -48,15 +48,17 @@ Positional Arguments:
 
 Options:
   -b, --bind        address to bind to [default: INADDR_ANY:0]
+  -i, --interface   interface to use (requires root or `cap_net_raw`) [default:
+                    None - selected by OS]
   -p, --port        which port use. [default: 67 (v4) or 546 (v6)]
   -t, --timeout     query timeout in seconds [default: 5]
-  --output          select the log output format
+  --output          select the log output format (json|pretty|debug) [default:
+                    pretty]
   --script          pass in a path to a rhai script
                     (https://github.com/rhaiscript/rhai) NOTE: must compile
-                    dhcpm with `rhai` feature
+                    dhcpm with `script` feature
   --no-retry        setting to "true" will prevent re-sending if we don't get a
-                    response [default: false] retries are disabled when using
-                    the script feature
+                    response [default: false]
   --help            display usage information
 
 Commands:
@@ -64,6 +66,7 @@ Commands:
   request           Send a REQUEST msg
   release           Send a RELEASE msg
   inform            Send an INFORM msg
+  decline           Send a DECLINE msg
   dora              Sends Discover then Request
   solicit           Send a SOLICIT msg (dhcpv6)
 ```

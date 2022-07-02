@@ -11,10 +11,12 @@
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
     os::unix::prelude::{FromRawFd, IntoRawFd},
-    path::PathBuf,
     sync::Arc,
     time::Instant,
 };
+
+#[cfg(feature = "script")]
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use argh::FromArgs;
@@ -33,6 +35,7 @@ mod request;
 mod runner;
 #[cfg(feature = "script")]
 mod script;
+
 use opts::{parse_mac, parse_opts, parse_params};
 use runner::TimeoutRunner;
 
@@ -249,6 +252,7 @@ pub struct Args {
     pub output: LogStructure,
     /// pass in a path to a rhai script (https://github.com/rhaiscript/rhai)
     /// NOTE: must compile dhcpm with `script` feature
+    #[cfg(feature = "script")]
     #[argh(option)]
     pub script: Option<PathBuf>,
     /// setting to "true" will prevent re-sending if we don't get a response [default: false]
