@@ -4,7 +4,10 @@ use anyhow::{anyhow, Error, Result};
 use dhcproto::{v4, Decodable, Decoder, Encoder};
 use mac_address::MacAddress;
 use tracing_subscriber::{
-    fmt::{self, format::Pretty},
+    fmt::{
+        self,
+        format::{Format, Pretty, PrettyFields},
+    },
     prelude::__tracing_subscriber_SubscriberExt,
     util::SubscriberInitExt,
     EnvFilter,
@@ -55,7 +58,8 @@ pub fn init_tracing(args: &Args) {
                 .with(filter_layer)
                 .with(
                     fmt::layer()
-                        .fmt_fields(Pretty::with_source_location(Pretty::default(), false))
+                        .event_format(Format::default().with_source_location(false))
+                        .fmt_fields(PrettyFields::new())
                         .with_target(false),
                 )
                 .init();
