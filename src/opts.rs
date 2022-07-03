@@ -132,7 +132,19 @@ pub fn parse_params(params: &str) -> Result<Vec<v4::OptionCode>, String> {
 pub fn parse_mac(mac: &str) -> Result<MacAddress, String> {
     match mac {
         "random" => Ok(rand::random::<[u8; 6]>().into()),
-        mac => MacAddress::from_str(mac).map_err(|err| format!("{:?}", err)),
+        mac => match MacAddress::from_str(mac) {
+            Ok(mac) => Ok(mac),
+            Err(err) => MacAddress::from_str(
+                &mac.chars()
+                    .collect::<Vec<_>>()
+                    .chunks(2)
+                    .map(|chunk| chunk.iter().collect::<String>())
+                    .collect::<Vec<String>>()
+                    .join(":"),
+            )
+            .map_err(|_| format!("{:?}", err)),
+        }
+        .map_err(|err| format!("{:?}", err)),
     }
 }
 

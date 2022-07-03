@@ -454,7 +454,16 @@ pub mod util {
                         .field("yiaddr", &msg.yiaddr())
                         .field("siaddr", &msg.siaddr())
                         .field("giaddr", &msg.giaddr())
-                        .field("chaddr", &format!("0x{}", hex::encode(msg.chaddr())))
+                        .field(
+                            "chaddr",
+                            &hex::encode(msg.chaddr())
+                                .chars()
+                                .collect::<Vec<char>>()
+                                .chunks(2)
+                                .map(|chunk| chunk.iter().collect::<String>())
+                                .collect::<Vec<_>>()
+                                .join(":"),
+                        )
                         // .field("sname", &msg.sname())
                         // .field("fname", &msg.fname())
                         // .field("magic", &String::from_utf8_lossy(self.magic()))
