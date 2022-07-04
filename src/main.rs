@@ -448,8 +448,8 @@ pub mod util {
                         // .field("hlen", &msg.hlen())
                         // .field("hops", &msg.hops())
                         .field("xid", &msg.xid())
-                        // .field("secs", &msg.secs())
-                        .field("broadcast flag", &msg.flags().broadcast())
+                        .field("secs", &msg.secs())
+                        .field("broadcast_flag", &msg.flags().broadcast())
                         .field("ciaddr", &msg.ciaddr())
                         .field("yiaddr", &msg.yiaddr())
                         .field("siaddr", &msg.siaddr())
@@ -473,7 +473,10 @@ pub mod util {
                         // .field("sname", &msg.sname())
                         // .field("fname", &msg.fname())
                         // .field("magic", &String::from_utf8_lossy(self.magic()))
-                        .field("opts", &msg.opts())
+                        .field(
+                            "opts",
+                            &msg.opts().iter().map(|(_, v)| v).collect::<Vec<_>>(),
+                        )
                         .finish()
                 }
                 Msg::V6(_msg) => {
