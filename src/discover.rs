@@ -6,7 +6,7 @@ use mac_address::MacAddress;
 
 use crate::opts::{self, parse_mac, parse_opts, parse_params};
 
-#[derive(FromArgs, PartialEq, Debug, Clone)]
+#[derive(FromArgs, PartialEq, Eq, Debug, Clone)]
 /// Send a DISCOVER msg
 #[argh(subcommand, name = "discover")]
 pub struct DiscoverArgs {

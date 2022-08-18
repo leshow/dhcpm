@@ -108,8 +108,10 @@ impl TimeoutRunner {
             // should be removed by now
             MsgType::Dora(_) => panic!("should be removed in main"),
             // dhcpv6
-            MsgType::Solicit(_) => panic!("solicit unimplemented"),
+            MsgType::InformationReq(args) => Msg::V6(args.build()),
+            _ => panic!("unimplemented"),
         };
+        trace!("send");
         self.send_tx.send((msg, target, broadcast))?;
         Ok(())
     }
@@ -118,6 +120,7 @@ impl TimeoutRunner {
 pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr, bool)>, soc: Arc<UdpSocket>) {
     thread::spawn(move || {
         while let Ok((msg, target, brd)) = send_rx.recv() {
+            trace!("got");
             let port = target.port();
             // set broadcast appropriately
             let target: SocketAddr = match target.ip() {
@@ -126,13 +129,12 @@ pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr, bool)>, soc: Arc<UdpSoc
                     (addr, port).into()
                 }
                 IpAddr::V4(addr) => (addr, port).into(),
-                IpAddr::V6(addr) if brd => {
-                    soc.join_multicast_v6(&addr, 0)?;
-                    (addr, port).into()
-                }
+                IpAddr::V6(addr) if brd => (addr, port).into(),
                 IpAddr::V6(addr) => (IpAddr::V6(addr), port).into(),
             };
+            trace!("a");
             soc.send_to(&msg.to_vec()?[..], target)?;
+            trace!("b");
             info!(msg_type = %msg.get_type(), ?target, msg = %PrettyPrint(&msg), "SENT");
         }
         trace!("sender thread exited");

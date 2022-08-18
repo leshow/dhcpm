@@ -18,16 +18,18 @@ use std::{
 #[cfg(feature = "script")]
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use argh::FromArgs;
 use crossbeam_channel::{Receiver, Sender};
 use dhcproto::{v4, v6};
 use mac_address::MacAddress;
 use opts::LogStructure;
+use pnet_datalink::NetworkInterface;
 use tracing::{error, info, trace};
 
 mod decline;
 mod discover;
+mod inforeq;
 mod inform;
 mod opts;
 mod release;
@@ -40,8 +42,8 @@ use opts::{parse_mac, parse_opts, parse_params};
 use runner::TimeoutRunner;
 
 use crate::{
-    decline::DeclineArgs, discover::DiscoverArgs, inform::InformArgs, release::ReleaseArgs,
-    request::RequestArgs, util::Msg,
+    decline::DeclineArgs, discover::DiscoverArgs, inforeq::InformationReqArgs, inform::InformArgs,
+    release::ReleaseArgs, request::RequestArgs, util::Msg,
 };
 
 #[allow(clippy::collapsible_else_if)]
@@ -49,13 +51,13 @@ fn main() -> Result<()> {
     let mut args: Args = argh::from_env();
 
     let mut default_port = false;
-    // set default port if none provided
+    // set default port to send if none provided
     if args.port.is_none() {
         default_port = true;
         if args.target.is_ipv6() {
-            args.port = Some(546);
+            args.port = Some(v6::SERVER_PORT);
         } else {
-            args.port = Some(67);
+            args.port = Some(v4::SERVER_PORT);
         }
     }
 
@@ -83,35 +85,71 @@ fn main() -> Result<()> {
 
     opts::init_tracing(&args);
     trace!(?args);
+    // let bind_addr = "[::0]:546".parse::<SocketAddr>().unwrap();
+    // let socket = UdpSocket::bind("[::0]:0".parse::<SocketAddr>().unwrap()).context("a")?;
+    // socket
+    //     .join_multicast_v6(&"ff02::1:2".parse::<Ipv6Addr>().unwrap(), 0)
+    //     .context("b")?;
+    // let bind_addr: SocketAddr = args.bind.context("bind address must be specified")?;
+    let interface = find_interface(&args.interface)?;
+    info!(?interface);
+    let bind_addr = args.bind.unwrap();
+    let socket = socket2::Socket::new(
+        if args.target.is_ipv6() {
+            socket2::Domain::IPV6
+        } else {
+            socket2::Domain::IPV4
+        },
+        socket2::Type::DGRAM,
+        Some(socket2::Protocol::UDP),
+    )?;
+    if args.target.is_ipv6() {
+        socket.set_only_v6(true).context("only ipv6")?;
+        socket
+            .set_reuse_address(true)
+            .context("failed to set_reuse_address")?;
+        socket
+            .set_reuse_port(true)
+            .context("failed to set_reuse_address")?;
+    } else {
+        socket.set_broadcast(true)?;
+    }
 
-    let bind_addr: SocketAddr = args.bind.context("bind address must be specified")?;
-    let soc = match args.interface {
-        Some(ref int) => {
-            let socket = socket2::Socket::new(
-                if args.target.is_ipv6() {
-                    socket2::Domain::IPV6
-                } else {
-                    socket2::Domain::IPV4
-                },
-                socket2::Type::DGRAM,
-                None,
-            )?;
-            socket.bind_device(Some(int.as_bytes()))?;
-            socket.bind(&bind_addr.into())?;
-            info!("bound to interface {}", int);
-            #[cfg(windows)]
-            unsafe {
-                UdpSocket::from_raw_socket(socket.into_raw_socket())?
-            }
-            #[cfg(unix)]
-            unsafe {
-                UdpSocket::from_raw_fd(socket.into_raw_fd())
+    socket
+        .bind(&bind_addr.into())
+        .context("failed to bind addr")?;
+
+    match interface {
+        Some(int) => {
+            socket
+                .bind_device(Some(int.name.as_bytes()))
+                .context("SO_BINDTODEVICE failed")?;
+            if bind_addr.is_ipv6() {
+                socket
+                    .join_multicast_v6(&"ff02::1:2".parse::<Ipv6Addr>().unwrap(), int.index)
+                    .context("join v6 multicast")?;
+                socket
+                    .set_multicast_if_v6(int.index)
+                    .context("set multicast_if")?;
             }
         }
-        None => UdpSocket::bind(bind_addr)?,
+        None => {
+            if bind_addr.is_ipv6() {
+                bail!("an interface must be specified for ipv6");
+            }
+        }
+    }
+    let socket = {
+        #[cfg(windows)]
+        unsafe {
+            UdpSocket::from_raw_socket(socket.into_raw_socket())?
+        }
+        #[cfg(unix)]
+        unsafe {
+            UdpSocket::from_raw_fd(socket.into_raw_fd())
+        }
     };
-    soc.set_broadcast(true)?;
-    let soc = Arc::new(soc);
+    let soc = Arc::new(socket);
 
     let shutdown_rx = ctrl_channel()?;
     // messages put on `send_tx` will go out on the socket
@@ -215,7 +253,7 @@ fn ctrl_channel() -> Result<Receiver<()>> {
     Ok(receiver)
 }
 
-#[derive(Debug, FromArgs, Clone, PartialEq)]
+#[derive(Debug, FromArgs, Clone, PartialEq, Eq)]
 #[argh(description = "dhcpm is a cli tool for sending dhcpv4/v6 messages
 
 ex  dhcpv4:
@@ -278,7 +316,7 @@ impl Args {
     }
 }
 
-#[derive(PartialEq, Debug, Clone, FromArgs)]
+#[derive(PartialEq, Eq, Debug, Clone, FromArgs)]
 #[argh(subcommand)]
 pub enum MsgType {
     Discover(DiscoverArgs),
@@ -288,9 +326,10 @@ pub enum MsgType {
     Decline(DeclineArgs),
     Dora(DoraArgs),
     Solicit(SolicitArgs),
+    InformationReq(InformationReqArgs),
 }
 
-#[derive(FromArgs, PartialEq, Debug, Clone)]
+#[derive(FromArgs, PartialEq, Eq, Debug, Clone)]
 /// Sends Discover then Request
 #[argh(subcommand, name = "dora")]
 pub struct DoraArgs {
@@ -362,7 +401,7 @@ impl DoraArgs {
     }
 }
 
-#[derive(FromArgs, PartialEq, Debug, Clone, Copy)]
+#[derive(FromArgs, PartialEq, Eq, Debug, Clone, Copy)]
 /// Send a SOLICIT msg (dhcpv6)
 #[argh(subcommand, name = "solicit")]
 pub struct SolicitArgs {}
@@ -441,48 +480,59 @@ pub mod util {
     impl fmt::Debug for Msg {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
-                Msg::V4(msg) => {
-                    f.debug_struct("v4::Message")
-                        // .field("opcode", &msg.opcode())
-                        // .field("htype", &msg.htype())
-                        // .field("hlen", &msg.hlen())
-                        // .field("hops", &msg.hops())
-                        .field("xid", &msg.xid())
-                        .field("secs", &msg.secs())
-                        .field("broadcast_flag", &msg.flags().broadcast())
-                        .field("ciaddr", &msg.ciaddr())
-                        .field("yiaddr", &msg.yiaddr())
-                        .field("siaddr", &msg.siaddr())
-                        .field("giaddr", &msg.giaddr())
-                        .field(
-                            "chaddr",
-                            &hex::encode(msg.chaddr())
-                                .chars()
-                                .enumerate()
-                                .flat_map(|(i, c)| {
-                                    if i != 0 && i % 2 == 0 {
-                                        Some(':')
-                                    } else {
-                                        None
-                                    }
-                                    .into_iter()
-                                    .chain(std::iter::once(c))
-                                })
-                                .collect::<String>(),
-                        )
-                        // .field("sname", &msg.sname())
-                        // .field("fname", &msg.fname())
-                        // .field("magic", &String::from_utf8_lossy(self.magic()))
-                        .field(
-                            "opts",
-                            &msg.opts().iter().map(|(_, v)| v).collect::<Vec<_>>(),
-                        )
-                        .finish()
-                }
-                Msg::V6(_msg) => {
-                    todo!("unfinished")
-                }
+                Msg::V4(msg) => f
+                    .debug_struct("v4::Message")
+                    .field("xid", &msg.xid())
+                    .field("secs", &msg.secs())
+                    .field("broadcast_flag", &msg.flags().broadcast())
+                    .field("ciaddr", &msg.ciaddr())
+                    .field("yiaddr", &msg.yiaddr())
+                    .field("siaddr", &msg.siaddr())
+                    .field("giaddr", &msg.giaddr())
+                    .field(
+                        "chaddr",
+                        &hex::encode(msg.chaddr())
+                            .chars()
+                            .enumerate()
+                            .flat_map(|(i, c)| {
+                                if i != 0 && i % 2 == 0 {
+                                    Some(':')
+                                } else {
+                                    None
+                                }
+                                .into_iter()
+                                .chain(std::iter::once(c))
+                            })
+                            .collect::<String>(),
+                    )
+                    .field(
+                        "opts",
+                        &msg.opts().iter().map(|(_, v)| v).collect::<Vec<_>>(),
+                    )
+                    .finish(),
+                Msg::V6(msg) => f
+                    .debug_struct("v6::Message")
+                    .field("xid", &msg.xid_num())
+                    .field("opts", &msg.opts())
+                    .finish(),
             }
         }
+    }
+}
+
+/// Returns:
+/// - interfaces matching the list supplied that are 'up' and have an IPv6
+/// - OR any 'up' interfaces that also have an IPv6
+pub fn find_interface(interface: &Option<String>) -> Result<Option<NetworkInterface>> {
+    let found_interfaces = pnet_datalink::interfaces()
+        .into_iter()
+        .filter(|e| e.is_up() && !e.ips.is_empty())
+        .collect::<Vec<_>>();
+    match interface {
+        Some(interface) => match found_interfaces.iter().find(|i| &i.name == interface) {
+            Some(i) => Ok(Some(i.clone())),
+            None => bail!("unable to find interface {}", interface),
+        },
+        None => Ok(None),
     }
 }

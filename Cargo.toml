@@ -13,7 +13,7 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dhcproto = "0.7.0"
+dhcproto = { git = "https://github.com/bluecatengineering/dhcproto" }
 anyhow = "1.0"
 argh = "0.1.7"
 crossbeam-channel = "0.5.1"
@@ -25,6 +25,7 @@ rand = "0.8"
 hex = "0.4"
 rhai = { version = "1.5.0", optional = true }
 socket2 = { version = "0.4.4", features = ["all"] }
+pnet_datalink = "0.31.0"
 # rhai-rand = { version = "0.1", optional = true }
 
 [features]

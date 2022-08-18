@@ -160,3 +160,18 @@ pub fn params_to_str(params: &[v4::OptionCode]) -> String {
         .collect::<Vec<_>>()
         .join(",")
 }
+
+pub mod v6 {
+    use dhcproto::v6;
+
+    pub fn parse_params(params: &str) -> Result<Vec<v6::OptionCode>, String> {
+        params
+            .split(',')
+            .map(|code| {
+                code.parse::<u16>()
+                    .map(v6::OptionCode::from)
+                    .map_err(|_| "parsing OptionCode failed".to_string())
+            })
+            .collect()
+    }
+}
