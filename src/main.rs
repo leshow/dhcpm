@@ -85,15 +85,10 @@ fn main() -> Result<()> {
 
     opts::init_tracing(&args);
     trace!(?args);
-    // let bind_addr = "[::0]:546".parse::<SocketAddr>().unwrap();
-    // let socket = UdpSocket::bind("[::0]:0".parse::<SocketAddr>().unwrap()).context("a")?;
-    // socket
-    //     .join_multicast_v6(&"ff02::1:2".parse::<Ipv6Addr>().unwrap(), 0)
-    //     .context("b")?;
-    // let bind_addr: SocketAddr = args.bind.context("bind address must be specified")?;
     let interface = find_interface(&args.interface)?;
-    info!(?interface);
-    let bind_addr = args.bind.unwrap();
+    trace!(?interface);
+
+    let bind_addr: SocketAddr = args.bind.context("bind address must be specified")?;
     let socket = socket2::Socket::new(
         if args.target.is_ipv6() {
             socket2::Domain::IPV6
@@ -101,7 +96,7 @@ fn main() -> Result<()> {
             socket2::Domain::IPV4
         },
         socket2::Type::DGRAM,
-        Some(socket2::Protocol::UDP),
+        None,
     )?;
     if args.target.is_ipv6() {
         socket.set_only_v6(true).context("only ipv6")?;
@@ -130,7 +125,8 @@ fn main() -> Result<()> {
                     .context("join v6 multicast")?;
                 socket
                     .set_multicast_if_v6(int.index)
-                    .context("set multicast_if")?;
+                    .context("set multicast interface")?;
+                // socket.set_multicast_loop_v6(true).context("listen to our own")?;
             }
         }
         None => {
@@ -535,4 +531,11 @@ pub fn find_interface(interface: &Option<String>) -> Result<Option<NetworkInterf
         },
         None => Ok(None),
     }
+}
+
+pub fn find_link_local(interface: &NetworkInterface) -> Option<Ipv6Addr> {
+    interface.ips.iter().find_map(|ip| match ip.ip() {
+        IpAddr::V6(ip) if (ip.segments()[0] & 0xffc0) == 0xfe80 => Some(ip),
+        _ => None,
+    })
 }

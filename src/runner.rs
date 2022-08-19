@@ -132,9 +132,7 @@ pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr, bool)>, soc: Arc<UdpSoc
                 IpAddr::V6(addr) if brd => (addr, port).into(),
                 IpAddr::V6(addr) => (IpAddr::V6(addr), port).into(),
             };
-            trace!("a");
             soc.send_to(&msg.to_vec()?[..], target)?;
-            trace!("b");
             info!(msg_type = %msg.get_type(), ?target, msg = %PrettyPrint(&msg), "SENT");
         }
         trace!("sender thread exited");
