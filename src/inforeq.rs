@@ -5,7 +5,7 @@ use mac_address::MacAddress;
 use crate::opts::{self, parse_mac, v6::parse_params};
 
 #[derive(FromArgs, PartialEq, Eq, Debug, Clone)]
-/// Send a INFORMATION-REQUEST msg
+/// Send a INFORMATION-REQUEST msg (dhcpv6)
 #[argh(subcommand, name = "inforeq")]
 pub struct InformationReqArgs {
     /// supply a mac address for DHCPv6 (use "random" for a random mac) [default: first interface mac]

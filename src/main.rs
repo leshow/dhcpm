@@ -46,6 +46,8 @@ use crate::{
     release::ReleaseArgs, request::RequestArgs, util::Msg,
 };
 
+const V6_MULTICAST: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 1, 2);
+
 #[allow(clippy::collapsible_else_if)]
 fn main() -> Result<()> {
     let mut args: Args = argh::from_env();
@@ -119,9 +121,9 @@ fn main() -> Result<()> {
             socket
                 .bind_device(Some(int.name.as_bytes()))
                 .context("SO_BINDTODEVICE failed")?;
-            if bind_addr.is_ipv6() {
+            if bind_addr.is_ipv6() && bind_addr.ip() == V6_MULTICAST {
                 socket
-                    .join_multicast_v6(&"ff02::1:2".parse::<Ipv6Addr>().unwrap(), int.index)
+                    .join_multicast_v6(&V6_MULTICAST, int.index)
                     .context("join v6 multicast")?;
                 socket
                     .set_multicast_if_v6(int.index)
@@ -259,14 +261,14 @@ ex  dhcpv4:
         dhcpm 192.168.0.1 dora                  (unicast DORA to 192.168.0.1)
         dhcpm 192.168.0.1 dora -o 118,C0A80001  (unicast DORA, incl opt 118:192.168.0.1)
     dhcpv6:
-        dhcpm ::0 -p 9901 solicit       (unicast solicit to [::0]:9901)
-        dhcpm ff02::1:2 solicit         (multicast solicit to default port)
+        dhcpm ::0 -p 9901 inforeq       (unicast inforeq to [::0]:9901)
+        dhcpm ff02::1:2 inforeq         (multicast inforeq to default port)
         ")]
 pub struct Args {
     /// ip address to send to
     #[argh(positional)]
     pub target: IpAddr,
-    /// select a msg type (can't use solicit with v4, or discover with v6)
+    /// select a msg type (make sure msg type is consistent with ip type, i.e. v4 or v6)
     #[argh(subcommand)]
     pub msg: Option<MsgType>,
     /// address to bind to [default: INADDR_ANY:0]
@@ -321,7 +323,6 @@ pub enum MsgType {
     Inform(InformArgs),
     Decline(DeclineArgs),
     Dora(DoraArgs),
-    Solicit(SolicitArgs),
     InformationReq(InformationReqArgs),
 }
 
@@ -396,11 +397,6 @@ impl DoraArgs {
         }
     }
 }
-
-#[derive(FromArgs, PartialEq, Eq, Debug, Clone, Copy)]
-/// Send a SOLICIT msg (dhcpv6)
-#[argh(subcommand, name = "solicit")]
-pub struct SolicitArgs {}
 
 pub mod util {
     use std::{fmt, time::Duration};

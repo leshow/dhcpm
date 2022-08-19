@@ -40,8 +40,8 @@ ex  dhcpv4:
         dhcpm 192.168.0.1 dora                  (unicast DORA to 192.168.0.1)
         dhcpm 192.168.0.1 dora -o 118,C0A80001  (unicast DORA, incl opt 118:192.168.0.1)
     dhcpv6:
-        dhcpm ::0 -p 9901 solicit       (unicast solicit to [::0]:9901)
-        dhcpm ff02::1:2 solicit         (multicast solicit to default port)
+        dhcpm ::0 -p 9901 inforeq       (unicast inforeq to [::0]:9901)
+        dhcpm ff02::1:2 inforeq         (multicast inforeq to default port)
 
 Positional Arguments:
   target            ip address to send to
@@ -54,9 +54,6 @@ Options:
   -t, --timeout     query timeout in seconds [default: 5]
   --output          select the log output format (json|pretty|debug) [default:
                     pretty]
-  --script          pass in a path to a rhai script
-                    (https://github.com/rhaiscript/rhai) NOTE: must compile
-                    dhcpm with `script` feature
   --no-retry        setting to "true" will prevent re-sending if we don't get a
                     response [default: false]
   --help            display usage information
@@ -68,7 +65,7 @@ Commands:
   inform            Send an INFORM msg
   decline           Send a DECLINE msg
   dora              Sends Discover then Request
-  solicit           Send a SOLICIT msg (dhcpv6)
+  inforeq           Send a INFORMATION-REQUEST msg (dhcpv6)
 ```
 
 ### Sending DHCP over arbitrary ports
@@ -123,6 +120,26 @@ Each sub-command (`discover`/`request`/`release`, etc) has sub-options. For exam
 
 ```
 dhcpm 255.255.255.255 discover --chaddr "80:FA:5B:41:10:6B"
+```
+
+### dhcpv6
+
+With DHCPv6, many messages are sent on the multicast group `ff02::1:2` but responses are often unicast back on link-local addresses (starting with `fe80`). `dhcpm` won't be able to receive this data if you've got another dhcpv6 client listening on `[::0]:546`, the dhcpv6 client port. The other process is will likely read the datagram first.
+
+For example, my box has:
+
+```
+> sudo lsof -Pi UDP
+...
+NetworkMa     711            root   20u  IPv6 12173080      0t0  UDP leshowbox:546
+```
+
+Listening on this `[::0]:546`, so that process would need to be killed before `dhcpm` could print a reply. Still, I have often found it enough to use `dhpcm` to generate a message, then look at the response in wireshark or tcpdump to inspect its validity.
+
+Specify an interface with v6, it is necessary to join the multicast group.
+
+```
+> sudo dhcpm ff02::1:2 -i enp6s0 inforeq
 ```
 
 ### Scripting
