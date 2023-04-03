@@ -118,9 +118,14 @@ fn main() -> Result<()> {
 
     match interface {
         Some(int) => {
+            #[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
             socket
                 .bind_device(Some(int.name.as_bytes()))
                 .context("SO_BINDTODEVICE failed")?;
+            #[cfg(target_vendor = "apple")]
+            socket
+                .bind_device_by_index(std::num::NonZeroU32::new(int.index))
+                .context("IP_BOUND_IF")?;
             if bind_addr.is_ipv6() && bind_addr.ip() == V6_MULTICAST {
                 socket
                     .join_multicast_v6(&V6_MULTICAST, int.index)

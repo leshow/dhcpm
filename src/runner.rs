@@ -109,7 +109,6 @@ impl TimeoutRunner {
             MsgType::Dora(_) => panic!("should be removed in main"),
             // dhcpv6
             MsgType::InformationReq(args) => Msg::V6(args.build()),
-            _ => panic!("unimplemented"),
         };
         trace!("send");
         self.send_tx.send((msg, target, broadcast))?;
