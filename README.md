@@ -21,7 +21,7 @@ cargo install dhcpm
 To include the rhai scripting feature, add
 
 ```
-cargo install dhcpm --feautures "script"
+cargo install dhcpm --features "script"
 ```
 
 ## Use
