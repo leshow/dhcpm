@@ -138,7 +138,6 @@ dependencies = [
  "ctrlc",
  "dhcproto",
  "hex",
- "libc",
  "mac_address",
  "pnet_datalink",
  "rand",
