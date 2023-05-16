@@ -23,7 +23,7 @@ pub struct InformationReqArgs {
 
 pub fn default_opts() -> Vec<v6::OptionCode> {
     vec![
-        v6::OptionCode::DNSNameServer,
+        v6::OptionCode::DomainNameServers,
         v6::OptionCode::DomainSearchList,
         v6::OptionCode::Unknown(39),
         v6::OptionCode::Unknown(59),

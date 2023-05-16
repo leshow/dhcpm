@@ -149,10 +149,13 @@ dependencies = [
 
 [[package]]
 name = "dhcproto"
-version = "0.9.0-alpha"
-source = "git+https://github.com/bluecatengineering/dhcproto#1766a1092c4be5f9d64590f2fdabaeaa233d1191"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcee045385d5f7819022821f41209b9945d17550760b0b2349aaef4ecfa14bc3"
 dependencies = [
+ "dhcproto-macros",
  "hex",
+ "ipnet",
  "rand",
  "thiserror",
  "trust-dns-proto",
@@ -160,10 +163,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "enum-as-inner"
-version = "0.4.0"
+name = "dhcproto-macros"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21cdad81446a7f7dc43f6a77409efeb9733d2fa65553efef6018ef257c959b73"
+checksum = "a7993efb860416547839c115490d4951c6d0f8ec04a3594d9dd99d50ed7ec170"
+
+[[package]]
+name = "enum-as-inner"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9720bba047d567ffc8a3cba48bf19126600e249ab7f128e9233e6376976a116"
 dependencies = [
  "heck 0.4.0",
  "proc-macro2",
@@ -754,9 +763,9 @@ dependencies = [
 
 [[package]]
 name = "trust-dns-proto"
-version = "0.21.2"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c31f240f59877c3d4bb3b3ea0ec5a6a0cff07323580ff8c7a605cd7d08b255d"
+checksum = "4f7f83d1e4a0e4358ac54c5c3681e5d7da5efc5a7a632c90bb6d6669ddd9bc26"
 dependencies = [
  "async-trait",
  "cfg-if",
@@ -768,11 +777,11 @@ dependencies = [
  "idna",
  "ipnet",
  "lazy_static",
- "log",
  "rand",
  "smallvec",
  "thiserror",
  "tinyvec",
+ "tracing",
  "url",
 ]
 
