@@ -7,8 +7,8 @@ use rhai::{plugin::*, Engine};
 use tracing::{debug, info};
 
 use crate::{
-    decline::DeclineArgs, runner::TimeoutRunner, util::Msg, DiscoverArgs, InformArgs, MsgType,
-    ReleaseArgs, RequestArgs,
+    bootreq::BootReqArgs, decline::DeclineArgs, runner::TimeoutRunner, util::Msg, DiscoverArgs,
+    InformArgs, MsgType, ReleaseArgs, RequestArgs,
 };
 
 // exposing Msg
@@ -98,18 +98,12 @@ mod v4_msg_mod {
 
 pub fn main<P: Into<PathBuf>>(path: P, runner: TimeoutRunner) -> Result<(), Box<EvalAltResult>> {
     let mut engine = Engine::new();
-    // TODO: this is gross
-    let discover_run = runner.clone();
-    let request_run = runner.clone();
-    let release_run = runner.clone();
-    let decline_run = runner.clone();
-    let inform_run = runner;
-
     engine
         // load random package for rhai scripts
         // .register_global_module(rhai_rand::RandomPackage::new().as_shared_module())
         // register types
         .register_type_with_name::<DiscoverArgs>("DiscoverArgs")
+        .register_type_with_name::<BootReqArgs>("BootReqArgs")
         .register_type_with_name::<RequestArgs>("RequestArgs")
         .register_type_with_name::<ReleaseArgs>("ReleaseArgs")
         .register_type_with_name::<InformArgs>("InformArgs")
@@ -122,6 +116,10 @@ pub fn main<P: Into<PathBuf>>(path: P, runner: TimeoutRunner) -> Result<(), Box<
         .register_static_module(
             "discover",
             exported_module!(crate::discover::discover_mod).into(),
+        )
+        .register_static_module(
+            "bootreq",
+            exported_module!(crate::bootreq::bootreq_mod).into(),
         )
         .register_static_module(
             "request",
@@ -138,34 +136,54 @@ pub fn main<P: Into<PathBuf>>(path: P, runner: TimeoutRunner) -> Result<(), Box<
         .register_static_module("inform", exported_module!(crate::inform::inform_mod).into())
         // TODO: return result?
         .register_fn("send", {
+            let runner = runner.clone();
             move |args: &mut DiscoverArgs| {
-                let mut new_runner = discover_run.clone();
+                let mut new_runner = runner.clone();
                 // replace runner args so it knows which message type to run
                 new_runner.args.msg = Some(MsgType::Discover(args.clone()));
                 new_runner.send().expect("runner failed").unwrap_v4()
             }
         })
-        .register_fn("send", move |args: &mut RequestArgs| {
-            let mut new_runner = request_run.clone();
-            // replace runner args so it knows which message type to run
-            new_runner.args.msg = Some(MsgType::Request(args.clone()));
-            new_runner.send().expect("runner failed").unwrap_v4()
-        })
-        .register_fn("send", move |args: &mut ReleaseArgs| {
-            let mut new_runner = release_run.clone();
-            // replace runner args so it knows which message type to run
-            new_runner.args.msg = Some(MsgType::Release(args.clone()));
-            new_runner.send().expect("runner failed").unwrap_v4()
-        })
-        .register_fn("send", move |args: &mut InformArgs| {
-            let mut new_runner = inform_run.clone();
-            // replace runner args so it knows which message type to run
-            new_runner.args.msg = Some(MsgType::Inform(args.clone()));
-            new_runner.send().expect("runner failed").unwrap_v4()
+        .register_fn("send", {
+            let runner = runner.clone();
+            move |args: &mut BootReqArgs| {
+                let mut new_runner = runner.clone();
+                // replace runner args so it knows which message type to run
+                new_runner.args.msg = Some(MsgType::BootReq(args.clone()));
+                new_runner.send().expect("runner failed").unwrap_v4()
+            }
         })
         .register_fn("send", {
+            let runner = runner.clone();
+            move |args: &mut RequestArgs| {
+                let mut new_runner = runner.clone();
+                // replace runner args so it knows which message type to run
+                new_runner.args.msg = Some(MsgType::Request(args.clone()));
+                new_runner.send().expect("runner failed").unwrap_v4()
+            }
+        })
+        .register_fn("send", {
+            let runner = runner.clone();
+            move |args: &mut ReleaseArgs| {
+                let mut new_runner = runner.clone();
+                // replace runner args so it knows which message type to run
+                new_runner.args.msg = Some(MsgType::Release(args.clone()));
+                new_runner.send().expect("runner failed").unwrap_v4()
+            }
+        })
+        .register_fn("send", {
+            let runner = runner.clone();
+            move |args: &mut InformArgs| {
+                let mut new_runner = runner.clone();
+                // replace runner args so it knows which message type to run
+                new_runner.args.msg = Some(MsgType::Inform(args.clone()));
+                new_runner.send().expect("runner failed").unwrap_v4()
+            }
+        })
+        .register_fn("send", {
+            let runner = runner;
             move |args: &mut DeclineArgs| {
-                let mut new_runner = decline_run.clone();
+                let mut new_runner = runner.clone();
                 // replace runner args so it knows which message type to run
                 new_runner.args.msg = Some(MsgType::Decline(args.clone()));
                 new_runner.send().expect("runner failed").unwrap_v4()

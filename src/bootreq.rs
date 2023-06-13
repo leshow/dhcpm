@@ -127,6 +127,26 @@ pub mod bootreq_mod {
         let bytes: [u8; 6] = chaddr.try_into().expect("failed to convert macaddress");
         args.chaddr = bytes.into();
     }
+    // fname
+    #[rhai_fn(global, get = "fname", pure)]
+    pub fn get_fname(args: &mut BootReqArgs) -> Option<String> {
+        args.fname.clone()
+    }
+    #[rhai_fn(global, set = "fname")]
+    pub fn set_fname(args: &mut BootReqArgs, fname: String) {
+        trace!(?fname, "setting fname");
+        args.fname = Some(fname);
+    }
+    // sname
+    #[rhai_fn(global, get = "sname", pure)]
+    pub fn get_sname(args: &mut BootReqArgs) -> Option<String> {
+        args.sname.clone()
+    }
+    #[rhai_fn(global, set = "sname")]
+    pub fn set_sname(args: &mut BootReqArgs, sname: String) {
+        trace!(?sname, "setting sname");
+        args.sname = Some(sname);
+    }
     #[rhai_fn(global, name = "rand_chaddr")]
     pub fn rand_chaddr(args: &mut BootReqArgs) {
         let chaddr = rand::random::<[u8; 6]>().into();
