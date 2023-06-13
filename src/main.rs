@@ -423,13 +423,12 @@ pub mod util {
     impl Msg {
         pub fn get_type(&self) -> String {
             match self {
-                Msg::V4(m) => format!(
-                    "{:?}",
-                    m.opts()
-                        .msg_type()
-                        .map(|m| format!("{m:?}").to_uppercase())
-                        .unwrap_or("bootreq".to_owned())
-                ),
+                Msg::V4(m) => m
+                    .opts()
+                    .msg_type()
+                    .map(|m| format!("{m:?}"))
+                    .unwrap_or(format!("{:?}", m.opcode()))
+                    .to_uppercase(),
                 Msg::V6(m) => format!("{:?}", m.opts()),
             }
         }
