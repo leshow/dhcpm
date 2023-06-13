@@ -105,6 +105,8 @@ impl TimeoutRunner {
             MsgType::Release(args) => Msg::V4(args.build()),
             MsgType::Inform(args) => Msg::V4(args.build()),
             MsgType::Decline(args) => Msg::V4(args.build()),
+            // bootp
+            MsgType::BootReq(args) => Msg::V4(args.build(broadcast)),
             // should be removed by now
             MsgType::Dora(_) => panic!("should be removed in main"),
             // dhcpv6
