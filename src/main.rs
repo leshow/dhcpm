@@ -27,6 +27,7 @@ use opts::LogStructure;
 use pnet_datalink::NetworkInterface;
 use tracing::{error, info, trace};
 
+mod bootreq;
 mod decline;
 mod discover;
 mod inforeq;
@@ -42,8 +43,9 @@ use opts::{parse_mac, parse_opts, parse_params};
 use runner::TimeoutRunner;
 
 use crate::{
-    decline::DeclineArgs, discover::DiscoverArgs, inforeq::InformationReqArgs, inform::InformArgs,
-    release::ReleaseArgs, request::RequestArgs, util::Msg,
+    bootreq::BootReqArgs, decline::DeclineArgs, discover::DiscoverArgs,
+    inforeq::InformationReqArgs, inform::InformArgs, release::ReleaseArgs, request::RequestArgs,
+    util::Msg,
 };
 
 const V6_MULTICAST: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 1, 2);
@@ -265,6 +267,8 @@ ex  dhcpv4:
         dhcpm 0.0.0.0 -p 9901 discover          (unicast discover to 0.0.0.0:9901)
         dhcpm 192.168.0.1 dora                  (unicast DORA to 192.168.0.1)
         dhcpm 192.168.0.1 dora -o 118,C0A80001  (unicast DORA, incl opt 118:192.168.0.1)
+    bootp:
+        dhcpm 255.255.255.255 bootreq           (broadcast BOOTREQ)
     dhcpv6:
         dhcpm ::0 -p 9901 inforeq       (unicast inforeq to [::0]:9901)
         dhcpm ff02::1:2 inforeq         (multicast inforeq to default port)
@@ -328,6 +332,7 @@ pub enum MsgType {
     Inform(InformArgs),
     Decline(DeclineArgs),
     Dora(DoraArgs),
+    BootReq(BootReqArgs),
     InformationReq(InformationReqArgs),
 }
 
@@ -418,7 +423,12 @@ pub mod util {
     impl Msg {
         pub fn get_type(&self) -> String {
             match self {
-                Msg::V4(m) => format!("{:?}", m.opts().msg_type().unwrap()),
+                Msg::V4(m) => m
+                    .opts()
+                    .msg_type()
+                    .map(|m| format!("{m:?}"))
+                    .unwrap_or(format!("{:?}", m.opcode()))
+                    .to_uppercase(),
                 Msg::V6(m) => format!("{:?}", m.opts()),
             }
         }
