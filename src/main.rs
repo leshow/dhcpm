@@ -10,10 +10,14 @@
 
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket},
-    os::unix::prelude::{FromRawFd, IntoRawFd},
     sync::Arc,
     time::Instant,
 };
+
+#[cfg(unix)]
+use std::os::unix::prelude::{FromRawFd, IntoRawFd};
+#[cfg(windows)]
+use std::os::windows::prelude::{FromRawSocket, IntoRawSocket};
 
 #[cfg(feature = "script")]
 use std::path::PathBuf;
@@ -107,6 +111,7 @@ fn main() -> Result<()> {
         socket
             .set_reuse_address(true)
             .context("failed to set_reuse_address")?;
+        #[cfg(unix)]
         socket
             .set_reuse_port(true)
             .context("failed to set_reuse_address")?;
@@ -147,7 +152,7 @@ fn main() -> Result<()> {
     let socket = {
         #[cfg(windows)]
         unsafe {
-            UdpSocket::from_raw_socket(socket.into_raw_socket())?
+            UdpSocket::from_raw_socket(socket.into_raw_socket())
         }
         #[cfg(unix)]
         unsafe {
