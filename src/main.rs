@@ -267,11 +267,11 @@ fn ctrl_channel() -> Result<Receiver<()>> {
 #[argh(description = "dhcpm is a cli tool for sending dhcpv4/v6 messages
 
 ex  dhcpv4:
-        dhcpm 255.255.255.255 discover          (broadcast discover to default dhcp port)
-        dhcpm 192.168.0.255 discover            (broadcast discover on interface bound to 192.168.0.x)
-        dhcpm 0.0.0.0 -p 9901 discover          (unicast discover to 0.0.0.0:9901)
-        dhcpm 192.168.0.1 dora                  (unicast DORA to 192.168.0.1)
-        dhcpm 192.168.0.1 dora -o 118,C0A80001  (unicast DORA, incl opt 118:192.168.0.1)
+        dhcpm 255.255.255.255 discover              (broadcast discover to default dhcp port)
+        dhcpm 192.168.0.255 discover                (broadcast discover on interface bound to 192.168.0.x)
+        dhcpm 0.0.0.0 -p 9901 discover              (unicast discover to 0.0.0.0:9901)
+        dhcpm 192.168.0.1 dora                      (unicast DORA to 192.168.0.1)
+        dhcpm 192.168.0.1 dora -o 118,hex,C0A80001  (unicast DORA, incl opt 118:192.168.0.1)
     bootp:
         dhcpm 255.255.255.255 bootreq           (broadcast BOOTREQ)
     dhcpv6:
