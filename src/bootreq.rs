@@ -30,8 +30,8 @@ pub struct BootReqArgs {
     /// sname [default: None]
     #[argh(option)]
     pub sname: Option<String>,
-    /// add opts to the message
-    /// [ex: these are equivalent- "118,hex,C0A80001" or "118,ip,192.168.0.1"]
+    /// add opts to the message ("code,type,value")
+    /// [ex: "118,hex,C0A80001" or "118,ip,192.168.0.1" or "60,str,foobar"]
     #[argh(option, short = 'o', from_str_fn(parse_opts))]
     pub opt: Vec<v4::DhcpOption>,
 }

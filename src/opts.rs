@@ -87,12 +87,13 @@ pub fn parse_opts(input: &str) -> Result<v4::DhcpOption, String> {
             let code = code.parse::<u8>().map_err(|_| "error parsing OptionCode")?;
             let opt = match *ty {
                 "hex" => Ok(hex::decode(val).map_err(|_| "decoding hex failed")?),
+                "str" => Ok(val.as_bytes().to_vec()),
                 "ip" => Ok(val
                     .parse::<Ipv4Addr>()
                     .map_err(|_| "decoding IP failed")?
                     .octets()
                     .to_vec()),
-                _ => Err("failed to decode with a type we understand \"hex\" or \"ip\""),
+                _ => Err("failed to decode with a type we understand \"hex\" or \"ip\" or \"str\""),
             }?;
             Ok(write_opt(code, opt).map_err(|e| {
                 eprintln!("{e}");
