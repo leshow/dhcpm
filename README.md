@@ -12,7 +12,7 @@ This software is a personal project and should be considered beta. I use the bas
 
 ## Installation
 
-You can install with
+You can install with (use `--locked` because `argh` has been broken in a recent version)
 
 ```
 cargo install dhcpm --locked
