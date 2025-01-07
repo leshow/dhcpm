@@ -15,13 +15,13 @@ This software is a personal project and should be considered beta. I use the bas
 You can install with
 
 ```
-cargo install dhcpm
+cargo install dhcpm --locked
 ```
 
 To include the rhai scripting feature, add
 
 ```
-cargo install dhcpm --features "script"
+cargo install dhcpm --features "script" --locked
 ```
 
 ## Use
