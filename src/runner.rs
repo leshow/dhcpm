@@ -15,6 +15,7 @@ use dhcproto::{
 };
 
 use crate::{
+    opts::LogStructure,
     util::{Msg, PrettyPrint, PrettyTime},
     Args, MsgType,
 };
@@ -53,7 +54,7 @@ impl TimeoutRunner {
                 recv(self.recv_rx) -> res => {
                     match res {
                         Ok((msg, _addr)) => {
-                            info!(msg_type = %msg.get_type(), elapsed = %PrettyTime(start.elapsed()), msg = %PrettyPrint(&msg), "RECEIVED");
+                            info!(msg_type = %msg.get_type(), elapsed = %PrettyTime(start.elapsed()), msg = %PrettyPrint(&msg, self.args.output), "RECEIVED");
                             return Ok(msg);
                         }
                         Err(err) => {
@@ -118,10 +119,13 @@ impl TimeoutRunner {
     }
 }
 
-pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr, bool)>, soc: Arc<UdpSocket>) {
+pub fn sender_thread(
+    send_rx: Receiver<(Msg, SocketAddr, bool)>,
+    soc: Arc<UdpSocket>,
+    output: LogStructure,
+) {
     thread::spawn(move || {
         while let Ok((msg, target, brd)) = send_rx.recv() {
-            trace!("got");
             let port = target.port();
             // set broadcast appropriately
             let target: SocketAddr = match target.ip() {
@@ -134,7 +138,7 @@ pub fn sender_thread(send_rx: Receiver<(Msg, SocketAddr, bool)>, soc: Arc<UdpSoc
                 IpAddr::V6(addr) => (IpAddr::V6(addr), port).into(),
             };
             soc.send_to(&msg.to_vec()?[..], target)?;
-            info!(msg_type = %msg.get_type(), ?target, msg = %PrettyPrint(&msg), "SENT");
+            info!(msg_type = %msg.get_type(), ?target, msg = %PrettyPrint(&msg, output), "SENT");
         }
         trace!("sender thread exited");
         Ok::<_, anyhow::Error>(())
