@@ -26,6 +26,8 @@ cargo install dhcpm --features "script" --locked
 
 ## Use
 
+There are two levels of options, run `dhcpm --help` to see which commands are available and `dhcpm <addr> <command> --help` to see the options for each command.
+
 ```
 > dhcpm --help
 
@@ -143,6 +145,32 @@ Specify an interface with v6, it is necessary to join the multicast group.
 
 ```
 > sudo dhcpm ff02::1:2 -i enp6s0 inforeq
+```
+
+### Logging
+
+Use `dhcpm <addr> --output json <command>` to output JSON formatted logs. If you want just a JSON formatted version of the message received, you can use `jq`:
+
+```
+dhcpm 255.255.255.255 --output json dora | jq -r ' .fields.msg | fromjson'
+```
+
+```json
+{
+  "type": "V4",
+  "opcode": "BootRequest",
+  "htype": "Eth",
+  "hlen": 6,
+  "hops": 0,
+  "xid": 2734656336,
+  "secs": 0,
+  "flags": 0,
+  "ciaddr": "0.0.0.0",
+  "yiaddr": "0.0.0.0",
+  "siaddr": "0.0.0.0",
+  "giaddr": "192.168.5.1"
+  // fields omitted ...
+}
 ```
 
 ### Scripting

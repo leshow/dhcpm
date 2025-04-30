@@ -167,7 +167,7 @@ fn main() -> Result<()> {
     // messages coming from `recv_rx` were received from the socket
     let (recv_tx, recv_rx) = crossbeam_channel::bounded(1);
 
-    runner::sender_thread(send_rx, soc.clone());
+    runner::sender_thread(send_rx, soc.clone(), args.output);
     runner::recv_thread(recv_tx, soc);
 
     let start = Instant::now();
@@ -418,8 +418,12 @@ pub mod util {
 
     use anyhow::Result;
     use dhcproto::{v4, v6, Encodable};
+    use serde::Serialize;
 
-    #[derive(Clone, PartialEq, Eq)]
+    use crate::opts::LogStructure;
+
+    #[derive(Clone, PartialEq, Eq, Serialize)]
+    #[serde(tag = "type")]
     pub enum Msg {
         V4(v4::Message),
         V6(v6::Message),
@@ -475,17 +479,27 @@ pub mod util {
     }
 
     #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct PrettyPrint<T>(pub T);
+    pub struct PrettyPrint<T>(pub T, pub LogStructure);
 
-    impl<T: fmt::Debug> fmt::Display for PrettyPrint<T> {
+    impl<T: fmt::Debug + serde::Serialize> fmt::Display for PrettyPrint<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{:#?}", &self.0)
+            match self.1 {
+                LogStructure::Json => {
+                    write!(f, "{}", serde_json::to_string_pretty(&self.0).unwrap())
+                }
+                _ => write!(f, "{:#?}", &self.0),
+            }
         }
     }
 
-    impl<T: fmt::Debug> fmt::Debug for PrettyPrint<T> {
+    impl<T: fmt::Debug + serde::Serialize> fmt::Debug for PrettyPrint<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{:?}", self.0)
+            match self.1 {
+                LogStructure::Json => {
+                    write!(f, "{}", serde_json::to_string_pretty(&self.0).unwrap())
+                }
+                _ => write!(f, "{:#?}", &self.0),
+            }
         }
     }
 

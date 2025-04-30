@@ -143,6 +143,8 @@ dependencies = [
  "pnet_datalink",
  "rand",
  "rhai",
+ "serde",
+ "serde_json",
  "socket2",
  "tracing",
  "tracing-subscriber",
@@ -158,6 +160,7 @@ dependencies = [
  "hex",
  "ipnet",
  "rand",
+ "serde",
  "thiserror",
  "trust-dns-proto",
  "url",
@@ -288,6 +291,9 @@ name = "ipnet"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879d54834c8c76457ef4293a689b2a8c59b076067ad77b15efafbb05f92a592b"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "ipnetwork"
@@ -569,6 +575,20 @@ name = "serde"
 version = "1.0.138"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1578c6245786b9d168c5447eeacfb96856573ca56c9d68fdcf394be134882a47"
+dependencies = [
+ "serde_derive",
+]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.138"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "023e9b1467aef8a10fb88f25611870ada9800ef7e22afce356bb0d2387b6f27c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "serde_json"
@@ -779,6 +799,7 @@ dependencies = [
  "ipnet",
  "lazy_static",
  "rand",
+ "serde",
  "smallvec",
  "thiserror",
  "tinyvec",
@@ -823,6 +844,7 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]

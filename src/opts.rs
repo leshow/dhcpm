@@ -26,11 +26,17 @@ pub fn get_mac() -> MacAddress {
         .unwrap()
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 pub enum LogStructure {
     Debug,
     Pretty,
     Json,
+}
+
+impl Default for LogStructure {
+    fn default() -> Self {
+        Self::Pretty
+    }
 }
 
 impl FromStr for LogStructure {
