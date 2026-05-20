@@ -203,6 +203,8 @@ pub mod release_mod {
     #[rhai_fn(global, set = "params")]
     pub fn set_params(args: &mut ReleaseArgs, params: String) {
         trace!(?params, "setting params");
-        args.params = crate::opts::ParamList(crate::opts::parse_params(&params).expect("failed to parse params"));
+        args.params = crate::opts::ParamList(
+            crate::opts::parse_params(&params).expect("failed to parse params"),
+        );
     }
 }

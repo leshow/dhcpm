@@ -200,6 +200,8 @@ pub mod inform_mod {
     #[rhai_fn(global, set = "params")]
     pub fn set_params(args: &mut InformArgs, params: String) {
         trace!(?params, "setting params");
-        args.params = crate::opts::ParamList(crate::opts::parse_params(&params).expect("failed to parse params"));
+        args.params = crate::opts::ParamList(
+            crate::opts::parse_params(&params).expect("failed to parse params"),
+        );
     }
 }
