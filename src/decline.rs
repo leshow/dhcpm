@@ -4,7 +4,7 @@ use argh::FromArgs;
 use dhcproto::v4;
 use mac_address::MacAddress;
 
-use crate::opts::{self, parse_mac, parse_opts, parse_params};
+use crate::opts::{self, parse_mac, parse_opts, ParamList};
 
 #[derive(FromArgs, PartialEq, Eq, Debug, Clone)]
 /// Send a DECLINE msg
@@ -44,8 +44,8 @@ pub struct DeclineArgs {
     #[argh(option, short = 'o', from_str_fn(parse_opts))]
     pub opt: Vec<v4::DhcpOption>,
     /// params to include: [default: None]
-    #[argh(option, from_str_fn(parse_params), default = "Vec::new()")]
-    pub params: Vec<v4::OptionCode>,
+    #[argh(option, default = "ParamList::default()")]
+    pub params: ParamList,
 }
 
 impl Default for DeclineArgs {
@@ -60,7 +60,7 @@ impl Default for DeclineArgs {
             subnet_select: None,
             relay_link: None,
             opt: Vec::new(),
-            params: Vec::new(),
+            params: ParamList::default(),
         }
     }
 }
@@ -81,7 +81,7 @@ impl DeclineArgs {
             self.chaddr.bytes().to_vec(),
         ));
         msg.opts_mut()
-            .insert(v4::DhcpOption::ParameterRequestList(self.params.clone()));
+            .insert(v4::DhcpOption::ParameterRequestList(self.params.0.clone()));
         // insert manually entered opts
         for opt in &self.opt {
             msg.opts_mut().insert(opt.clone());
@@ -225,6 +225,8 @@ pub mod decline_mod {
     #[rhai_fn(global, set = "params")]
     pub fn set_params(args: &mut DeclineArgs, params: String) {
         trace!(?params, "setting params");
-        args.params = crate::opts::parse_params(&params).expect("failed to parse params");
+        args.params = crate::opts::ParamList(
+            crate::opts::parse_params(&params).expect("failed to parse params"),
+        );
     }
 }

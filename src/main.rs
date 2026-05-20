@@ -43,7 +43,7 @@ mod runner;
 #[cfg(feature = "script")]
 mod script;
 
-use opts::{parse_mac, parse_opts, parse_params};
+use opts::{parse_mac, parse_opts, ParamList};
 use runner::TimeoutRunner;
 
 use crate::{
@@ -379,8 +379,8 @@ pub struct DoraArgs {
     #[argh(option, short = 'o', from_str_fn(parse_opts))]
     pub opt: Vec<v4::DhcpOption>,
     /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
-    #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
-    pub params: Vec<v4::OptionCode>,
+    #[argh(option, default = "opts::default_params()")]
+    pub params: ParamList,
 }
 
 impl DoraArgs {
