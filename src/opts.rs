@@ -26,7 +26,7 @@ pub fn get_mac() -> MacAddress {
         .unwrap()
 }
 
-#[derive(Default, Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Default, Copy, PartialOrd, Ord, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum LogStructure {
     Debug,
     #[default]
@@ -42,8 +42,7 @@ impl FromStr for LogStructure {
             "pretty" => Ok(LogStructure::Pretty),
             "debug" => Ok(LogStructure::Debug),
             _ => Err(anyhow!(
-                "unknown log structure type: {:?} must be \"json\" or \"compact\" or \"pretty\"",
-                s
+                "unknown log structure type: {s:?} must be \"json\" or \"compact\" or \"pretty\""
             )),
         }
     }
@@ -148,9 +147,9 @@ pub fn parse_mac(mac: &str) -> Result<MacAddress, String> {
                     .collect::<Vec<String>>()
                     .join(":"),
             )
-            .map_err(|_| format!("{:?}", err)),
+            .map_err(|_| format!("{err:?}")),
         }
-        .map_err(|err| format!("{:?}", err)),
+        .map_err(|err| format!("{err:?}")),
     }
 }
 

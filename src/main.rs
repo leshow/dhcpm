@@ -557,7 +557,7 @@ pub fn find_interface(interface: &Option<String>) -> Result<Option<NetworkInterf
     match interface {
         Some(interface) => match found_interfaces.iter().find(|i| &i.name == interface) {
             Some(i) => Ok(Some(i.clone())),
-            None => bail!("unable to find interface {}", interface),
+            None => bail!("unable to find interface {interface}"),
         },
         None => Ok(None),
     }
