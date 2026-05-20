@@ -38,7 +38,7 @@ mod msg_mod {
     }
     #[rhai_fn(global, name = "to_string", name = "to_debug", pure)]
     pub fn to_string(msg: &mut Msg) -> String {
-        format!("{:?}", msg)
+        format!("{msg:?}")
     }
     // '==' and '!=' operators
     #[rhai_fn(global, name = "==", pure)]
@@ -83,7 +83,7 @@ mod v4_msg_mod {
 
     #[rhai_fn(global, name = "to_string", name = "to_debug", pure)]
     pub fn to_string(msg: &mut v4::Message) -> String {
-        format!("{:?}", msg)
+        format!("{msg:?}")
     }
     // '==' and '!=' operators
     #[rhai_fn(global, name = "==", pure)]
