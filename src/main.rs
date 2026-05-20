@@ -131,7 +131,7 @@ fn main() -> Result<()> {
                 .context("SO_BINDTODEVICE failed")?;
             #[cfg(target_vendor = "apple")]
             socket
-                .bind_device_by_index(std::num::NonZeroU32::new(int.index))
+                .bind_device_by_index_v4(std::num::NonZeroU32::new(int.index))
                 .context("IP_BOUND_IF")?;
             if bind_addr.is_ipv6() && bind_addr.ip() == V6_MULTICAST {
                 socket
