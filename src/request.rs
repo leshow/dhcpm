@@ -127,7 +127,7 @@ pub mod request_mod {
     }
     #[rhai_fn(global, name = "to_string", name = "to_debug", pure)]
     pub fn to_string(args: &mut RequestArgs) -> String {
-        format!("{:?}", args)
+        format!("{args:?}")
     }
     // ciaddr
     #[rhai_fn(global, get = "ciaddr", pure)]

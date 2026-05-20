@@ -123,7 +123,7 @@ pub mod decline_mod {
     }
     #[rhai_fn(global, name = "to_string", name = "to_debug", pure)]
     pub fn to_string(args: &mut DeclineArgs) -> String {
-        format!("{:?}", args)
+        format!("{args:?}")
     }
     // ciaddr
     #[rhai_fn(global, get = "ciaddr", pure)]

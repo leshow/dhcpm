@@ -131,7 +131,7 @@ fn main() -> Result<()> {
                 .context("SO_BINDTODEVICE failed")?;
             #[cfg(target_vendor = "apple")]
             socket
-                .bind_device_by_index(std::num::NonZeroU32::new(int.index))
+                .bind_device_by_index_v4(std::num::NonZeroU32::new(int.index))
                 .context("IP_BOUND_IF")?;
             if bind_addr.is_ipv6() && bind_addr.ip() == V6_MULTICAST {
                 socket
@@ -557,7 +557,7 @@ pub fn find_interface(interface: &Option<String>) -> Result<Option<NetworkInterf
     match interface {
         Some(interface) => match found_interfaces.iter().find(|i| &i.name == interface) {
             Some(i) => Ok(Some(i.clone())),
-            None => bail!("unable to find interface {}", interface),
+            None => bail!("unable to find interface {interface}"),
         },
         None => Ok(None),
     }
