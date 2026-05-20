@@ -114,13 +114,30 @@ fn write_opt(code: u8, opt: Vec<u8>) -> Result<v4::DhcpOption> {
     Ok(v4::DhcpOption::decode(&mut Decoder::new(&buf))?)
 }
 
-pub fn default_params() -> Vec<v4::OptionCode> {
-    vec![
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct ParamList(pub Vec<v4::OptionCode>);
+
+impl std::str::FromStr for ParamList {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_params(s).map(ParamList)
+    }
+}
+
+impl std::ops::Deref for ParamList {
+    type Target = Vec<v4::OptionCode>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub fn default_params() -> ParamList {
+    ParamList(vec![
         v4::OptionCode::SubnetMask,
         v4::OptionCode::Router,
         v4::OptionCode::DomainNameServer,
         v4::OptionCode::DomainName,
-    ]
+    ])
 }
 
 pub fn parse_params(params: &str) -> Result<Vec<v4::OptionCode>, String> {
@@ -164,6 +181,23 @@ pub fn params_to_str(params: &[v4::OptionCode]) -> String {
 
 pub mod v6 {
     use dhcproto::v6;
+
+    #[derive(Default, Debug, Clone, PartialEq, Eq)]
+    pub struct ParamList(pub Vec<v6::OptionCode>);
+
+    impl std::str::FromStr for ParamList {
+        type Err = String;
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            parse_params(s).map(ParamList)
+        }
+    }
+
+    impl std::ops::Deref for ParamList {
+        type Target = Vec<v6::OptionCode>;
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
 
     pub fn parse_params(params: &str) -> Result<Vec<v6::OptionCode>, String> {
         params

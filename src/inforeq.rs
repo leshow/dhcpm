@@ -2,7 +2,7 @@ use argh::FromArgs;
 use dhcproto::v6;
 use mac_address::MacAddress;
 
-use crate::opts::{self, parse_mac, v6::parse_params};
+use crate::opts::{self, parse_mac, v6::ParamList as V6ParamList};
 
 #[derive(FromArgs, PartialEq, Eq, Debug, Clone)]
 /// Send a INFORMATION-REQUEST msg (dhcpv6)
@@ -17,17 +17,17 @@ pub struct InformationReqArgs {
     )]
     pub chaddr: MacAddress,
     /// params to include: [default: 23,24,39,59]
-    #[argh(option, from_str_fn(parse_params), default = "default_opts()")]
-    pub params: Vec<v6::OptionCode>,
+    #[argh(option, default = "default_opts()")]
+    pub params: V6ParamList,
 }
 
-pub fn default_opts() -> Vec<v6::OptionCode> {
-    vec![
+pub fn default_opts() -> V6ParamList {
+    V6ParamList(vec![
         v6::OptionCode::DomainNameServers,
         v6::OptionCode::DomainSearchList,
         v6::OptionCode::Unknown(39),
         v6::OptionCode::Unknown(59),
-    ]
+    ])
 }
 
 impl Default for InformationReqArgs {
@@ -44,7 +44,7 @@ impl InformationReqArgs {
         let mut msg = v6::Message::new(v6::MessageType::InformationRequest);
 
         msg.opts_mut().insert(v6::DhcpOption::ORO(v6::ORO {
-            opts: self.params.clone(),
+            opts: self.params.0.clone(),
         }));
 
         msg

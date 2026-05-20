@@ -12,16 +12,16 @@ This software is a personal project and should be considered beta. I use the bas
 
 ## Installation
 
-You can install with (use `--locked` because `argh` has been broken in a recent version)
+You can install with
 
 ```
-cargo install dhcpm --locked
+cargo install dhcpm
 ```
 
 To include the rhai scripting feature, add
 
 ```
-cargo install dhcpm --features "script" --locked
+cargo install dhcpm --features "script"
 ```
 
 ## Use

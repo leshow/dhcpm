@@ -4,7 +4,7 @@ use argh::FromArgs;
 use dhcproto::v4;
 use mac_address::MacAddress;
 
-use crate::opts::{self, parse_mac, parse_opts, parse_params};
+use crate::opts::{self, parse_mac, parse_opts, ParamList};
 
 #[derive(FromArgs, PartialEq, Eq, Debug, Clone)]
 /// Send a RELEASE msg
@@ -41,8 +41,8 @@ pub struct ReleaseArgs {
     #[argh(option, short = 'o', from_str_fn(parse_opts))]
     pub opt: Vec<v4::DhcpOption>,
     /// params to include: [default: 1,3,6,15 (Subnet, Router, DnsServer, DomainName]
-    #[argh(option, from_str_fn(parse_params), default = "opts::default_params()")]
-    pub params: Vec<v4::OptionCode>,
+    #[argh(option, default = "opts::default_params()")]
+    pub params: ParamList,
 }
 
 impl Default for ReleaseArgs {
@@ -77,7 +77,7 @@ impl ReleaseArgs {
             self.chaddr.bytes().to_vec(),
         ));
         msg.opts_mut()
-            .insert(v4::DhcpOption::ParameterRequestList(self.params.clone()));
+            .insert(v4::DhcpOption::ParameterRequestList(self.params.0.clone()));
         // insert manually entered opts
         for opt in &self.opt {
             msg.opts_mut().insert(opt.clone());
@@ -203,6 +203,6 @@ pub mod release_mod {
     #[rhai_fn(global, set = "params")]
     pub fn set_params(args: &mut ReleaseArgs, params: String) {
         trace!(?params, "setting params");
-        args.params = crate::opts::parse_params(&params).expect("failed to parse params");
+        args.params = crate::opts::ParamList(crate::opts::parse_params(&params).expect("failed to parse params"));
     }
 }

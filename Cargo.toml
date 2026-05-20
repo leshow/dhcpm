@@ -19,8 +19,8 @@ license = "MIT"
 [dependencies]
 dhcproto = { version = "0.15.0", features = ["serde"] }
 anyhow = "1.0"
-argh = "=0.1.7"
-argh_derive = "=0.1.7"
+argh = "0.1"
+argh_derive = "0.1"
 crossbeam-channel = "0.5.15"
 ctrlc = "3.5.2"
 mac_address = "1.1.8"
